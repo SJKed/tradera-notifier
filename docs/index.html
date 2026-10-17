@@ -197,7 +197,7 @@
       <h1>AoS <span>Bargains</span></h1>
       <div class="status" id="status">Loading…</div>
     </div>
-    <button class="refresh icon-btn" id="open-settings" aria-label="Edit searches">
+    <button class="refresh icon-btn" id="open-settings" aria-label="Searches and notifications">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8 11h6M11 8v6"/></svg>
     </button>
     <button class="refresh icon-btn" id="refresh" aria-label="Refresh">
@@ -239,6 +239,11 @@
       </div>
 
       <div id="editor" hidden>
+        <div class="section">
+          <h3>Notifications</h3>
+          <label class="switch-row"><span>Notify this device about new bargains</span><input type="checkbox" id="notif-toggle"></label>
+          <p class="hint" id="notif-hint" style="margin-top:0"></p>
+        </div>
         <div class="section">
           <h3>Searches</h3>
           <div id="watches"></div>
@@ -475,7 +480,7 @@ function showEditor(on) {
   $("connect").hidden = on;
   $("editor").hidden = !on;
   $("foot").hidden = !on;
-  $("settings-title").textContent = on ? "Searches" : "Edit searches";
+  $("settings-title").textContent = on ? "Searches & alerts" : "Searches & alerts";
 }
 
 function watchCard(w, i) {
@@ -494,6 +499,7 @@ function watchCard(w, i) {
 }
 
 function renderEditor() {
+  refreshNotifUI().catch(() => {});
   const c = gh.cfg;
   $("watches").innerHTML = c.watch.length ? c.watch.map(watchCard).join("") : '<p class="hint" style="margin:0 0 10px">No searches yet.</p>';
   $("opt-auctions").checked = c.settings.include_auctions !== false;
@@ -604,6 +610,7 @@ $("watches").addEventListener("click", (e) => {
   renderEditor();
 });
 $("editor").addEventListener("input", (e) => {
+  if (e.target.id === "notif-toggle") return; // saves itself
   if (e.target.dataset.k === "name") e.target.closest(".watch").style.setProperty("--c", colorFor(e.target.value));
   renderUsage();
   setMsg("Unsaved changes");
@@ -639,11 +646,138 @@ $("settings-form").addEventListener("submit", (e) => e.preventDefault());
 $("close-settings").addEventListener("click", () => $("settings").close());
 
 
+// ---------- Push notifications ----------
+// The watcher signs pushes with a key it keeps private; its public half is in push.json.
+// This device's subscription is saved to push/subscriptions.json in the repo.
+const push = {
+  supported: "serviceWorker" in navigator && "PushManager" in window && "Notification" in window,
+  ios: /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1),
+  standalone: matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+};
+const SUBS_FILE = "contents/push/subscriptions.json";
+
+function b64urlToBytes(s) {
+  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+}
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const dev = push.ios ? (/iPad/.test(ua) || navigator.maxTouchPoints > 1 && !/iPhone/.test(ua) ? "iPad" : "iPhone")
+    : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "Device";
+  const br = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  return br ? `${dev} · ${br}` : dev;
+}
+async function publicKey() {
+  const res = await fetch(`push.json?t=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return (await res.json()).publicKey || null;
+}
+
+// Read-modify-write push/subscriptions.json, retrying once if it changed under us.
+async function updateSubs(mutate, message) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let sha, list = [];
+    try {
+      const f = await ghApi(SUBS_FILE);
+      sha = f.sha; list = JSON.parse(b64decode(f.content));
+    } catch (e) { if (e.status !== 404) throw e; }
+    const next = mutate(Array.isArray(list) ? list : []);
+    try {
+      await ghApi(SUBS_FILE, { method: "PUT", body: JSON.stringify({
+        message, content: b64encode(JSON.stringify(next, null, 2) + "\n"), ...(sha ? { sha } : {}),
+      }) });
+      return next;
+    } catch (e) { if (e.status !== 409 && e.status !== 422 || attempt) throw e; }
+  }
+}
+
+async function subscribeDevice(key) {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && store.get("pushKey", "") !== key) { await sub.unsubscribe().catch(() => {}); sub = null; }
+  sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(key) });
+  const json = sub.toJSON();
+  const old = store.get("pushEndpoint", "");
+  if (old !== json.endpoint || store.get("pushKey", "") !== key || !store.get("pushSaved", false)) {
+    const entry = { endpoint: json.endpoint, keys: json.keys, publicKey: key, label: deviceLabel(), added: new Date().toISOString() };
+    await updateSubs((list) => [...list.filter((s) => s.endpoint !== json.endpoint && s.endpoint !== old), entry],
+      `Subscribe ${entry.label} to notifications`);
+    store.set("pushSaved", true);
+  }
+  store.set("pushEndpoint", json.endpoint); store.set("pushKey", key); store.set("pushOn", true);
+}
+
+async function unsubscribeDevice() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  const endpoint = sub?.endpoint || store.get("pushEndpoint", "");
+  if (endpoint) await updateSubs((list) => list.filter((s) => s.endpoint !== endpoint), `Unsubscribe ${deviceLabel()} from notifications`);
+  if (sub) await sub.unsubscribe().catch(() => {});
+  store.set("pushOn", false); store.set("pushSaved", false); store.set("pushEndpoint", "");
+}
+
+function notifHint(text, kind = "") { const h = $("notif-hint"); h.textContent = text; h.style.color = kind === "err" ? "#ff8b7a" : kind === "ok" ? "var(--nurgle)" : ""; }
+
+async function refreshNotifUI() {
+  const t = $("notif-toggle");
+  t.disabled = false;
+  if (!push.supported) {
+    t.checked = false; t.disabled = true;
+    notifHint(push.ios ? "On iPhone, add this app to your Home Screen first (Share → Add to Home Screen), then turn this on from the installed app."
+                       : "This browser doesn't support push notifications.");
+    return;
+  }
+  if (Notification.permission === "denied") {
+    t.checked = false; t.disabled = true;
+    notifHint("Notifications are blocked for this app. Allow them in your browser or phone settings, then come back.", "err");
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const on = !!(await reg.pushManager.getSubscription()) && store.get("pushOn", false);
+  t.checked = on;
+  notifHint(on ? `On for this ${deviceLabel()}. Each new bargain pings you; tapping it opens the listing.` : "Off on this device.");
+}
+
+$("notif-toggle").addEventListener("change", async (e) => {
+  const t = e.target; t.disabled = true;
+  try {
+    if (t.checked) {
+      notifHint("Turning on…");
+      if (await Notification.requestPermission() !== "granted") { t.checked = false; notifHint("Permission wasn't given, so notifications stay off.", "err"); return; }
+      const key = await publicKey();
+      if (!key) { t.checked = false; notifHint("The watcher hasn't published its push key yet. Let it run once (Actions tab), then try again.", "err"); return; }
+      await subscribeDevice(key);
+      notifHint("On. You'll get a “Notifications are on” test ping within a few minutes.", "ok");
+    } else {
+      notifHint("Turning off…");
+      await unsubscribeDevice();
+      notifHint("Off on this device.");
+    }
+  } catch (err) {
+    t.checked = !t.checked;
+    notifHint(err.message || String(err), "err");
+  } finally {
+    t.disabled = false;
+  }
+});
+
+// On app open: if the watcher's key changed or the browser rotated the subscription, quietly re-subscribe.
+async function keepPushFresh() {
+  if (!push.supported || !gh.token || !store.get("pushOn", false) || Notification.permission !== "granted") return;
+  try {
+    const key = await publicKey();
+    if (!key) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub || key !== store.get("pushKey", "") || sub.endpoint !== store.get("pushEndpoint", "")) await subscribeDevice(key);
+  } catch (e) { console.warn("Push refresh failed", e); }
+}
+
 data = store.get("cache", null);
 if (data) { renderStatus(false); render(); }
 load();
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(keepPushFresh).catch(() => {});
 </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 # Tradera notifier – AoS Bargains
 
-Checks Tradera every 15 minutes for cheap Warhammer listings (by default **Helsmiths of Hashut**, **Maggotkin of Nurgle** and **Kruleboyz**) and shows them in a small installable web app, **AoS Bargains**, with links straight to each Tradera listing. You can add, change and remove searches from inside the app.
+Checks Tradera every 15 minutes for cheap Warhammer listings (by default **Helsmiths of Hashut**, **Maggotkin of Nurgle** and **Kruleboyz**) and shows them in a small installable web app, **AoS Bargains**, with links straight to each Tradera listing. It can send a push notification to your phone for each new find, and you can add, change and remove searches from inside the app.
 
 Everything runs free on GitHub: Actions runs the bot, Pages hosts the app. The bot uses Tradera's official API and only reads search results. It never bids or buys.
 
@@ -10,6 +10,7 @@ Everything runs free on GitHub: Actions runs the bot, Pages hosts the app. The b
 - `docs/` is the app (PWA). It reads `listings.json` and shows the listings.
 - `.github/workflows/watch.yml` runs the bot every 15 minutes and on every push, then publishes `docs/` to GitHub Pages.
 - When you save searches in the app, it commits `config.json` to this repo. That push reruns the bot, so new results appear within a couple of minutes.
+- When you turn on notifications, the app commits this device's push subscription to `push/subscriptions.json`. The bot signs pushes with a key it creates on its first run and keeps in the Actions cache, so the key is never in the repo.
 
 ## Setup
 
@@ -35,6 +36,15 @@ Each search has:
 - **exclude words**: titles containing any of these are skipped
 
 Under Options you can turn auctions off, set a stricter price cap for auctions, or change how many result pages to scan. The app shows your estimated daily API usage; Tradera allows 10,000 calls a day.
+
+## Notifications
+
+Open the magnifier button → **Notifications** → turn on *Notify this device about new bargains* (it uses the same GitHub token as the search editor). Within a few minutes you get a "Notifications are on" test ping. After that, each new bargain sends one notification, and tapping it opens the Tradera listing.
+
+- **iPhone/iPad:** push only works in the installed app (iOS 16.4 or newer). Add it to your Home Screen first, open it from there, then turn notifications on.
+- **No floods:** nothing is sent on the bot's very first run, or for listings a brand-new search finds on its first run. If more than 5 new listings turn up at once, you get one summary instead.
+- Turn notifications on separately on each device you want pinged. Turning them off removes that device.
+- If the Actions cache is ever cleared, the bot makes a new signing key. The app notices and re-subscribes the next time you open it.
 
 ## In the app
 

@@ -30,25 +30,34 @@ jobs:
         with:
           python-version: "3.12"
 
-      # The listing list (and which ids we've already seen) carries over between runs.
-      - name: Restore listings
+      - name: Install push library
+        run: pip install --quiet pywebpush
+
+      # Listings, seen ids and the push signing key carry over between runs.
+      # (The cache is private to this repo's workflows; the key never goes in the repo.)
+      - name: Restore state
         uses: actions/cache/restore@v4
         with:
-          path: docs/listings.json
-          key: listings-${{ github.run_id }}
-          restore-keys: listings-
+          path: |
+            docs/listings.json
+            state
+          key: state-${{ github.run_id }}
+          restore-keys: state-
 
       - name: Check Tradera
         env:
           TRADERA_APP_ID: ${{ secrets.TRADERA_APP_ID }}
           TRADERA_APP_KEY: ${{ secrets.TRADERA_APP_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}   # optional, pins the push key
         run: python bot.py
 
-      - name: Save listings
+      - name: Save state
         uses: actions/cache/save@v4
         with:
-          path: docs/listings.json
-          key: listings-${{ github.run_id }}
+          path: |
+            docs/listings.json
+            state
+          key: state-${{ github.run_id }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

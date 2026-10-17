@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Tradera watcher: searches Tradera for Warhammer listings and keeps a rolling
-list of cheap ones in docs/listings.json, which the PWA in docs/ displays.
+Tradera watcher: searches Tradera for Warhammer listings, keeps a rolling
+list of cheap ones in docs/listings.json (shown by the PWA in docs/), and sends
+a Web Push notification for each new find to devices in push/subscriptions.json.
 
 Uses Tradera's official API (free developer account required) and only reads
 search results - it never bids or buys.
@@ -9,6 +10,7 @@ search results - it never bids or buys.
 Environment variables:
   TRADERA_APP_ID    your Tradera developer App ID (integer)
   TRADERA_APP_KEY   your Tradera developer App Key (GUID)
+  VAPID_PRIVATE_KEY optional PEM push signing key (otherwise one is made in state/)
 
 Usage:
   python bot.py                 run one check (what GitHub Actions does)
@@ -33,6 +35,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", HERE / "config.json"))
 DATA_PATH = Path(os.environ.get("DATA_PATH", HERE / "docs" / "listings.json"))
+STATE_DIR = Path(os.environ.get("STATE_DIR", HERE / "state"))   # cached by Actions, not committed
+VAPID_PATH = STATE_DIR / "vapid.pem"
+PUSH_STATE_PATH = STATE_DIR / "push.json"
+PUSH_PUBLIC_PATH = DATA_PATH.parent / "push.json"
+SUBS_PATH = Path(os.environ.get("SUBS_PATH", HERE / "push" / "subscriptions.json"))
 
 API_V4 = "https://api.tradera.com/v4/search"
 API_V3 = "https://api.tradera.com/v3/SearchService.asmx/Search"
@@ -251,6 +258,141 @@ def prune(listings: list[dict], now: datetime) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# Web Push notifications
+# --------------------------------------------------------------------------- #
+# The signing ("VAPID") key is created on the first run and kept in state/,
+# which GitHub Actions caches between runs - it never goes in the repo. Only
+# the public half is published (docs/push.json) so the app can subscribe.
+# Devices subscribe from the app, which commits them to push/subscriptions.json.
+
+MAX_PUSHES = 5  # more new listings than this in one run -> a summary push instead
+
+
+def _b64url(b: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def ensure_vapid() -> tuple[bytes, str]:
+    """Return (private key PEM, public key as base64url), creating the key if needed."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    pem = os.environ.get("VAPID_PRIVATE_KEY", "").encode() or None
+    if not pem and VAPID_PATH.exists():
+        pem = VAPID_PATH.read_bytes()
+    if pem:
+        key = serialization.load_pem_private_key(pem, password=None)
+    else:
+        key = ec.generate_private_key(ec.SECP256R1())
+        pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                serialization.NoEncryption())
+        VAPID_PATH.parent.mkdir(parents=True, exist_ok=True)
+        VAPID_PATH.write_bytes(pem)
+        print("Created a new push signing key; devices will re-subscribe next time the app opens.")
+    pub = key.public_key().public_bytes(serialization.Encoding.X962,
+                                        serialization.PublicFormat.UncompressedPoint)
+    return pem, _b64url(pub)
+
+
+def app_url() -> str:
+    if os.environ.get("APP_URL"):
+        return os.environ["APP_URL"]
+    owner, _, repo = os.environ.get("GITHUB_REPOSITORY", "SJKed/tradera-notifier").partition("/")
+    return f"https://{owner.lower()}.github.io/{repo}/"
+
+
+def load_subscriptions() -> list[dict]:
+    try:
+        subs = json.loads(SUBS_PATH.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+    return [s for s in subs if isinstance(s, dict) and s.get("endpoint") and s.get("keys")]
+
+
+def _sub_id(endpoint: str) -> str:
+    import hashlib
+    return hashlib.sha256(endpoint.encode()).hexdigest()[:16]
+
+
+def push_messages(new: list[dict]) -> list[dict]:
+    def one(l):
+        if l["bin"] and l["auction"]:
+            kind = f"Buy now · bid {l['auction']} kr"
+        elif l["bin"]:
+            kind = "Buy now"
+        else:
+            kind = f"Auction · {l['bids']} bids" if l["bids"] else "Auction · no bids"
+        return {"title": f"{l['watch']}: {lowest_price(l)} kr", "body": f"{l['title']}\n{kind}",
+                "url": l["url"], "image": l.get("thumb") or "", "tag": f"item-{l['id']}"}
+    if len(new) <= MAX_PUSHES:
+        return [one(l) for l in new]
+    cheapest = sorted(new, key=lowest_price)[:3]
+    lines = "\n".join(f"{lowest_price(l)} kr · {l['title']}" for l in cheapest)
+    return [{"title": f"{len(new)} new bargains", "body": lines, "url": "", "tag": "summary"}]
+
+
+def send_pushes(new: list[dict], quiet: bool) -> None:
+    """Notify every subscribed device. quiet=True only sends welcome pushes."""
+    try:
+        pem, pub = ensure_vapid()
+    except Exception as e:
+        print(f"Push disabled: {e}", file=sys.stderr)
+        return
+    PUSH_PUBLIC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PUSH_PUBLIC_PATH.write_text(json.dumps({"publicKey": pub}))
+
+    subs = [s for s in load_subscriptions() if s.get("publicKey") == pub]
+    if not subs:
+        return
+    try:
+        from py_vapid import Vapid02  # RFC 8292 "vapid t=, k=" header (needed by Apple)
+        from pywebpush import WebPushException, webpush
+    except ImportError:
+        print("pywebpush not installed; skipping notifications (pip install pywebpush).", file=sys.stderr)
+        return
+
+    vapid = Vapid02.from_pem(pem)
+    # Push services want a contact in the signature: a bare https://host (no path) works.
+    claims = {"sub": "https://" + urllib.parse.urlsplit(app_url()).netloc}
+    state = {}
+    if PUSH_STATE_PATH.exists():
+        try:
+            state = json.loads(PUSH_STATE_PATH.read_text())
+        except json.JSONDecodeError:
+            pass
+    welcomed = set(state.get("welcomed", []))
+    messages = [] if quiet else push_messages(new)
+    sent = 0
+
+    for s in subs:
+        sid = _sub_id(s["endpoint"])
+        outbox = list(messages)
+        if sid not in welcomed:
+            outbox.insert(0, {"title": "Notifications are on",
+                              "body": "You'll get a ping here for each new bargain.", "url": "", "tag": "welcome"})
+        for msg in outbox:
+            try:
+                webpush({"endpoint": s["endpoint"], "keys": s["keys"]}, json.dumps(msg),
+                        vapid_private_key=vapid, vapid_claims=dict(claims), ttl=86400,
+                        headers={"Urgency": "high"}, timeout=15)
+                welcomed.add(sid)
+                sent += 1
+            except WebPushException as e:
+                code = getattr(e.response, "status_code", None)
+                if code in (404, 410):
+                    print(f"Device {s.get('label', sid)} unsubscribed or expired; remove it in the app.")
+                    break
+                print(f"Push to {s.get('label', sid)} failed: {e}", file=sys.stderr)
+            except Exception as e:
+                print(f"Push to {s.get('label', sid)} failed: {e}", file=sys.stderr)
+    if sent:
+        print(f"Sent {sent} notification(s) to {len(subs)} device(s).")
+    PUSH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PUSH_STATE_PATH.write_text(json.dumps({"welcomed": sorted(welcomed)}))
+
+
+# --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
 
@@ -268,10 +410,15 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
 
     now = _now()
     data = load_data()
+    first_run = not data
+    # Searches that have completed a run before. A brand-new search fills up with
+    # everything already on Tradera, which shouldn't all buzz your phone.
+    seeded = set(data.get("seeded_watches", {l.get("watch") for l in data.get("listings", [])}))
     seen = set(data.get("seen", []))
     listings = {l["id"]: l for l in data.get("listings", [])}
     new: list[dict] = []
     errors = 0
+    failed_watches: set[str] = set()
 
     for watch in cfg.get("watch", []):
         name = watch.get("name") or "Unnamed"
@@ -289,6 +436,7 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
                 except Exception as e:  # keep going with other searches
                     print(f"[{name}] '{query}' page {page}: {e}", file=sys.stderr)
                     errors += 1
+                    failed_watches.add(name)
                     break
                 if not raw_items:
                     break
@@ -322,18 +470,23 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
     if not dry_run:
         # Drop listings from searches you have deleted in the app.
         # (Their ids are forgotten too, so a renamed search finds them again.)
-        names = {w["name"] for w in cfg.get("watch", [])}
+        names = {w.get("name") or "Unnamed" for w in cfg.get("watch", [])}
         dropped = {l["id"] for l in listings.values() if l.get("watch") not in names}
         kept = prune([l for l in listings.values() if l["id"] not in dropped], now)
         kept.sort(key=lambda l: l.get("found", ""), reverse=True)
         data.update({
             "updated": _iso(now),
             "errors": errors,
-            "watches": [{"name": w["name"], "max_price": w["max_price"]} for w in cfg.get("watch", [])],
+            "watches": [{"name": w.get("name") or "Unnamed", "max_price": w.get("max_price")} for w in cfg.get("watch", [])],
+            "seeded_watches": sorted(n for n in names if n not in failed_watches),
             "listings": kept,
             "seen": [i for i in data.get("seen", []) if i not in dropped] + [l["id"] for l in new],
         })
         save_data(data)
+        to_notify = [] if first_run else [l for l in new if l["watch"] in seeded]
+        if len(to_notify) < len(new):
+            print(f"Not notifying {len(new) - len(to_notify)} listing(s) from a first run or a new search.")
+        send_pushes(to_notify, quiet=not to_notify)
     return new
 
 
