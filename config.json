@@ -105,6 +105,14 @@
       ],
       "max_price": 300,
       "exclude": []
+    },
+    {
+      "name": "Lumineth",
+      "queries": [
+        "lumineth"
+      ],
+      "max_price": 300,
+      "exclude": []
     }
   ]
 }
