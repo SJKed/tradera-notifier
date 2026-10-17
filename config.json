@@ -6,6 +6,8 @@
     "exclude_all": [
       "paint",
       "paints",
+      "colour",
+      "color",
       "färg",
       "färger",
       "färgset",
