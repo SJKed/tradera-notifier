@@ -64,7 +64,7 @@
       "queries": [
         "hashut"
       ],
-      "max_price": 500,
+      "max_price": 300,
       "exclude": []
     },
     {
@@ -73,7 +73,7 @@
         "nurgle",
         "maggotkin"
       ],
-      "max_price": 500,
+      "max_price": 300,
       "exclude": [
         "death guard",
         "40k",
@@ -94,7 +94,7 @@
         "kruleboys",
         "orruk"
       ],
-      "max_price": 500,
+      "max_price": 300,
       "exclude": []
     },
     {
@@ -103,7 +103,7 @@
         "khorne",
         "skarbrand"
       ],
-      "max_price": 500,
+      "max_price": 300,
       "exclude": []
     }
   ]
