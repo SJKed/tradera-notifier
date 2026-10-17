@@ -1,6 +1,6 @@
 // App shell is cached so the app opens instantly and offline.
 // listings.json is always fetched fresh by the page (with a localStorage fallback).
-const CACHE = "aos-bargains-v4";
+const CACHE = "aos-bargains-v5";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/badge-96.png"];
 
 self.addEventListener("install", (e) => {

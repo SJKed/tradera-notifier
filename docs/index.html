@@ -130,6 +130,11 @@
   footer { text-align: center; font-size: 12px; color: var(--muted); padding: 0 16px 24px; }
 
   .icon-btn { margin-left: 0; }
+  .install-btn {
+    margin-left: auto; flex: none; height: 36px; padding: 0 14px; border-radius: 999px;
+    border: 0; background: var(--brass); color: #1a1208; font: inherit; font-weight: 700; cursor: pointer;
+  }
+  .install-btn:not([hidden]) ~ .refresh:first-of-type { margin-left: 0; }
   .top .refresh:first-of-type { margin-left: auto; }
 
   /* ---------- Settings ---------- */
@@ -198,6 +203,7 @@
       <h1>AoS <span>Bargains</span></h1>
       <div class="status" id="status">Loading…</div>
     </div>
+    <button class="install-btn" id="install" hidden>Install</button>
     <button class="refresh icon-btn" id="open-settings" aria-label="Searches and notifications">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8 11h6M11 8v6"/></svg>
     </button>
@@ -780,6 +786,22 @@ async function keepPushFresh() {
 data = store.get("cache", null);
 if (data) { renderStatus(false); render(); }
 load();
+
+// One-tap install on Android/desktop Chrome (iOS has no install prompt; use Share → Add to Home Screen).
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $("install").hidden = false;
+});
+$("install").addEventListener("click", async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  $("install").hidden = true;
+});
+window.addEventListener("appinstalled", () => { $("install").hidden = true; installPrompt = null; });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(keepPushFresh).catch(() => {});
 </script>
