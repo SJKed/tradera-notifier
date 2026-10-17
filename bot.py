@@ -413,6 +413,28 @@ def send_pushes(new: list[dict], quiet: bool) -> None:
 # Main
 # --------------------------------------------------------------------------- #
 
+def reject_reason(l: dict, cfg: dict, exclude_all: list[str], include_auctions: bool,
+                  auction_max: int | None) -> str | None:
+    """Why a tracked listing no longer fits the current settings, or None if it still does."""
+    watch = next((w for w in cfg.get("watch", []) if (w.get("name") or "Unnamed") == l.get("watch")), None)
+    if watch is None:
+        return "its search was deleted"
+    queries = [q.strip().lower() for q in watch.get("queries", []) if q.strip()]
+    found_by = [q.lower() for q in l.get("queries", [])]
+    if found_by:
+        if not set(found_by) & set(queries):
+            return "the search word that found it was removed"
+    elif not any(q in l.get("title", "").lower() for q in queries):
+        # Listed before search words were tracked: fall back to the title.
+        return "the search word that found it was removed"
+    exclude = [x for x in watch.get("exclude", []) if x.strip()] + exclude_all
+    if excluded(l.get("title", ""), exclude):
+        return "matches an exclude word"
+    if not is_cheap(l, _int(watch.get("max_price")), include_auctions, auction_max):
+        return "over the price limit (or auctions are turned off)"
+    return None
+
+
 def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
     """Search everything, update listings.json. Returns newly found listings."""
     app_id = os.environ.get("TRADERA_APP_ID")
@@ -462,16 +484,18 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
                 for item in items:
                     if not item["id"]:
                         continue
-                    cheap = is_cheap(item, max_price, include_auctions, auction_max)
                     if item["id"] in listings:
-                        # Already tracked: refresh price, bids and end time.
+                        # Already tracked: refresh price, bids and end time, and remember
+                        # which search words still find it. Whether it stays is decided at save time.
                         l = listings[item["id"]]
                         l.update({k: item[k] for k in ("title", "bin", "auction", "bids", "end", "thumb")})
-                        l["over_budget"] = not cheap
+                        if l.get("watch") == name and query not in l.setdefault("queries", []):
+                            l["queries"].append(query)
                         continue
-                    if item["id"] in seen or excluded(item["title"], exclude) or not cheap:
+                    if (item["id"] in seen or excluded(item["title"], exclude)
+                            or not is_cheap(item, max_price, include_auctions, auction_max)):
                         continue
-                    entry = {**item, "watch": name, "found": _iso(now), "over_budget": False}
+                    entry = {**item, "watch": name, "queries": [query], "found": _iso(now), "over_budget": False}
                     listings[item["id"]] = entry
                     seen.add(item["id"])
                     new.append(entry)
@@ -486,18 +510,18 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
         print("No new cheap listings.")
 
     if not dry_run:
-        # Drop listings from searches you have deleted in the app.
-        # (Their ids are forgotten too, so a renamed search finds them again.)
+        # Re-check every listing against the current settings and drop the ones that
+        # wouldn't be added today. Their ids are forgotten too, so they come back if the
+        # settings change back (a raised limit, a re-added search word, a renamed search).
         names = {w.get("name") or "Unnamed" for w in cfg.get("watch", [])}
-        dropped = {l["id"] for l in listings.values() if l.get("watch") not in names}
-        # Also drop listings that an exclude word added since now filters out.
-        excl = {w.get("name") or "Unnamed": [x for x in w.get("exclude", []) if x.strip()] + exclude_all
-                for w in cfg.get("watch", [])}
-        filtered = {l["id"] for l in listings.values()
-                    if l["id"] not in dropped and excluded(l.get("title", ""), excl.get(l.get("watch"), []))}
-        if filtered:
-            print(f"Removed {len(filtered)} listing(s) that now match an exclude word.")
-        dropped |= filtered
+        dropped, reasons = set(), {}
+        for l in listings.values():
+            why = reject_reason(l, cfg, exclude_all, include_auctions, auction_max)
+            if why:
+                dropped.add(l["id"])
+                reasons[why] = reasons.get(why, 0) + 1
+        for why, n in sorted(reasons.items()):
+            print(f"Removed {n} listing(s): {why}.")
         new = [l for l in new if l["id"] not in dropped]
         kept = prune([l for l in listings.values() if l["id"] not in dropped], now)
         kept.sort(key=lambda l: l.get("found", ""), reverse=True)

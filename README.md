@@ -52,7 +52,7 @@ Open the magnifier button → **Notifications** → turn on *Notify this device 
 
 - **NEW** marks listings found since you last opened the app. On Android, the app icon also shows a badge with the count.
 - Filter by army, sort by newest, cheapest or ending soonest, or show buy-now listings only.
-- Faded cards are listings whose price has risen above your limit, usually auctions with new bids.
+- Every run, listings are re-checked against your current settings. Anything over your price limit (a lowered limit, or bids that went past it), matching an exclude word, or found only by a search word you've removed disappears. Change the setting back and they return.
 - Ended listings, and listings older than 30 days, disappear automatically.
 
 ## Running the bot locally
