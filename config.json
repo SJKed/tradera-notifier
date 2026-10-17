@@ -1,13 +1,14 @@
 {
   "settings": {
     "max_pages": 3,
-    "include_auctions": true,
+    "include_auctions": false,
     "auction_max_price": null,
     "exclude_all": [
       "paint",
       "paints",
       "färg",
       "färger",
+      "färgset",
       "målarfärg",
       "maling",
       "layer",
