@@ -1,12 +1,1 @@
-[
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/e3fwEfYMxno:APA91bESBdRftAeDJ6LmaCjjCOEpPZoHMAVLxAEojXQFCfdFHh_5MVvMEaWiftDBOdLX-fZbp_MV0kRjgslkFsTbpzN2je3WCLKmLqI5D2iApnZtZGI0C1nh2jZqMfiqCaFmQefRmUta",
-    "keys": {
-      "p256dh": "BCHLNWHCUnwaSOUCaB4dZ2XQp9z30_wUTpADncrlbEQr6ikBPlii2EFyeRQOweYVxQZptDkWJmCSYuLydU0Uktw",
-      "auth": "fvfGsNZd4zZXre2njBODdg"
-    },
-    "publicKey": "BP_OUmm0osF0u2seLsNxTHAz1ERSEOliJHUSk6EfJIgjpXurcXYdaw9S7Hu8eKpeLdbC6nXWmMPPTxRWumupfXs",
-    "label": "Android · Chrome",
-    "added": "2026-10-17T01:17:39.260Z"
-  }
-]
+[]
