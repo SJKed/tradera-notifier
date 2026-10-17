@@ -101,7 +101,6 @@
       "name": "Khorne",
       "queries": [
         "khorne",
-        "bloodthirster",
         "skarbrand"
       ],
       "max_price": 500,
