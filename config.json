@@ -2,30 +2,96 @@
   "settings": {
     "max_pages": 3,
     "include_auctions": true,
-    "auction_max_price": null
+    "auction_max_price": null,
+    "exclude_all": [
+      "paint",
+      "paints",
+      "färg",
+      "färger",
+      "målarfärg",
+      "maling",
+      "layer",
+      "technical",
+      "contrast",
+      "shade",
+      "spray",
+      "primer",
+      "airbrush",
+      "hashut copper",
+      "nurgles rot",
+      "nurgle's rot",
+      "white dwarf",
+      "magazine",
+      "magazin",
+      "magasin",
+      "tidning",
+      "tidningen",
+      "journal",
+      "blood bowl",
+      "bloodbowl",
+      "book",
+      "books",
+      "bok",
+      "boken",
+      "böcker",
+      "novel",
+      "roman",
+      "hardback",
+      "paperback",
+      "inbunden",
+      "pocket",
+      "black library",
+      "audiobook",
+      "ljudbok",
+      "battletome",
+      "card",
+      "cards",
+      "spelkort",
+      "kortlek",
+      "faction pack",
+      "dice",
+      "tärning",
+      "tärningar"
+    ]
   },
   "watch": [
     {
       "name": "Helsmiths of Hashut",
-      "queries": ["hashut"],
+      "queries": [
+        "hashut"
+      ],
       "max_price": 300,
       "exclude": []
     },
     {
       "name": "Maggotkin of Nurgle",
-      "queries": ["nurgle", "maggotkin"],
+      "queries": [
+        "nurgle",
+        "maggotkin"
+      ],
       "max_price": 250,
       "exclude": [
-        "death guard", "40k", "40 000", "40000", "plague marine", "poxwalker",
-        "blightlord", "deathshroud", "kill team", "necromunda", "black library",
-        "bok", "roman", "novel", "kort ", "card", "total war"
+        "death guard",
+        "40k",
+        "40 000",
+        "40000",
+        "plague marine",
+        "poxwalker",
+        "blightlord",
+        "deathshroud",
+        "kill team",
+        "necromunda",
+        "total war"
       ]
     },
     {
       "name": "Kruleboyz",
-      "queries": ["kruleboyz", "kruleboys"],
+      "queries": [
+        "kruleboyz",
+        "kruleboys"
+      ],
       "max_price": 250,
-      "exclude": ["bok", "roman", "novel", "card"]
+      "exclude": []
     }
   ]
 }

@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -195,9 +196,25 @@ def is_cheap(item: dict, max_price: int, include_auctions: bool, auction_max: in
     return False
 
 
+_pattern_cache: dict[str, re.Pattern] = {}
+
+
+def _word_pattern(word: str) -> re.Pattern | None:
+    """Whole-word match ("paint" hides "Paint" but not "painted"). A trailing *
+    matches the start of a word instead ("paint*" also hides "painted")."""
+    w = word.strip().lower()
+    if not w or w == "*":
+        return None
+    if w not in _pattern_cache:
+        prefix = w.endswith("*")
+        core = re.escape(w.rstrip("*").strip())
+        _pattern_cache[w] = re.compile(rf"(?<!\w){core}" + ("" if prefix else r"(?!\w)"))
+    return _pattern_cache[w]
+
+
 def excluded(title: str, words: list[str]) -> bool:
-    t = f" {title.lower()} "
-    return any(w.lower() in t for w in words)
+    t = title.lower()
+    return any(p.search(t) for w in words if (p := _word_pattern(w)))
 
 
 def lowest_price(item: dict) -> int:
@@ -407,6 +424,7 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
     max_pages = int(settings.get("max_pages", 3))
     include_auctions = bool(settings.get("include_auctions", True))
     auction_max = settings.get("auction_max_price") or None
+    exclude_all = [w for w in settings.get("exclude_all", []) if isinstance(w, str)]
 
     now = _now()
     data = load_data()
@@ -423,7 +441,7 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
     for watch in cfg.get("watch", []):
         name = watch.get("name") or "Unnamed"
         max_price = _int(watch.get("max_price"))
-        exclude = [w for w in watch.get("exclude", []) if w.strip()]
+        exclude = [w for w in watch.get("exclude", []) if w.strip()] + exclude_all
         queries = [q.strip() for q in watch.get("queries", []) if q.strip()]
         if not queries or max_price <= 0:
             print(f"[{name}] skipped: needs search words and a max price", file=sys.stderr)
@@ -472,6 +490,15 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
         # (Their ids are forgotten too, so a renamed search finds them again.)
         names = {w.get("name") or "Unnamed" for w in cfg.get("watch", [])}
         dropped = {l["id"] for l in listings.values() if l.get("watch") not in names}
+        # Also drop listings that an exclude word added since now filters out.
+        excl = {w.get("name") or "Unnamed": [x for x in w.get("exclude", []) if x.strip()] + exclude_all
+                for w in cfg.get("watch", [])}
+        filtered = {l["id"] for l in listings.values()
+                    if l["id"] not in dropped and excluded(l.get("title", ""), excl.get(l.get("watch"), []))}
+        if filtered:
+            print(f"Removed {len(filtered)} listing(s) that now match an exclude word.")
+        dropped |= filtered
+        new = [l for l in new if l["id"] not in dropped]
         kept = prune([l for l in listings.values() if l["id"] not in dropped], now)
         kept.sort(key=lambda l: l.get("found", ""), reverse=True)
         data.update({

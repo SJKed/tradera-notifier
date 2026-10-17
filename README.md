@@ -35,7 +35,9 @@ Each search has:
 - a **max price** in kr
 - **exclude words**: titles containing any of these are skipped
 
-Under Options you can turn auctions off, set a stricter price cap for auctions, or change how many result pages to scan. The app shows your estimated daily API usage; Tradera allows 10,000 calls a day.
+Under Options, **Always exclude** holds words that apply to every search. It comes pre-filled to skip paints, White Dwarf and other magazines, Blood Bowl, novels, battletomes, card packs and dice. Exclude words match whole words, so `paint` hides "Citadel Paint" but not "Painted Kruleboyz". End a word with `*` to also match longer words (`paint*` hides both). When you add an exclude word, listings already in the app that match it disappear on the next run.
+
+You can also turn auctions off, set a stricter price cap for auctions, or change how many result pages to scan. The app shows your estimated daily API usage; Tradera allows 10,000 calls a day.
 
 ## Notifications
 

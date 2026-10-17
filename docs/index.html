@@ -158,7 +158,8 @@
   .hint a { color: var(--brass); }
   .field { display: grid; gap: 4px; margin-bottom: 10px; }
   .field > span { font-size: 12.5px; color: var(--muted); }
-  input[type=text], input[type=number], input[type=password] {
+  textarea { resize: vertical; line-height: 1.35; }
+  input[type=text], input[type=number], input[type=password], textarea {
     width: 100%; font: inherit; font-size: 16px; color: var(--text);
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
   }
@@ -248,10 +249,11 @@
           <h3>Searches</h3>
           <div id="watches"></div>
           <button type="button" class="btn wide" id="add-watch">+ Add search</button>
-          <p class="hint">Search words are searched one at a time on Tradera. Listings whose title contains an <i>exclude</i> word are skipped. Separate words with commas.</p>
+          <p class="hint">Search words are searched one at a time on Tradera. Listings whose title contains an <i>exclude</i> word are skipped. Separate words with commas. Words match whole words; end one with <b>*</b> to also match longer words (<i>paint*</i> also hides “painted”).</p>
         </div>
         <div class="section">
           <h3>Options</h3>
+          <label class="field"><span>Always exclude (all searches)</span><textarea id="opt-exclude-all" rows="4" placeholder="paint, white dwarf, battletome" autocapitalize="off" spellcheck="false"></textarea></label>
           <label class="switch-row"><span>Include auctions</span><input type="checkbox" id="opt-auctions"></label>
           <div class="two">
             <label class="field"><span>Auction price cap (kr, optional)</span><input type="number" id="opt-auction-max" inputmode="numeric" min="1" placeholder="same as search"></label>
@@ -494,7 +496,7 @@ function watchCard(w, i) {
         <label class="field"><span>Search words</span><input type="text" data-k="queries" value="${esc((w.queries || []).join(", "))}" placeholder="skaven, clanrats" autocapitalize="off"></label>
         <label class="field"><span>Max price (kr)</span><input type="number" data-k="max_price" value="${esc(w.max_price ?? "")}" inputmode="numeric" min="1"></label>
       </div>
-      <label class="field"><span>Exclude words</span><input type="text" data-k="exclude" value="${esc((w.exclude || []).join(", "))}" placeholder="40k, bok, card" autocapitalize="off"></label>
+      <label class="field"><span>Exclude words</span><input type="text" data-k="exclude" value="${esc((w.exclude || []).join(", "))}" placeholder="e.g. 40k, kill team" autocapitalize="off"></label>
     </div>`;
 }
 
@@ -505,6 +507,7 @@ function renderEditor() {
   $("opt-auctions").checked = c.settings.include_auctions !== false;
   $("opt-auction-max").value = c.settings.auction_max_price ?? "";
   $("opt-pages").value = c.settings.max_pages ?? 3;
+  $("opt-exclude-all").value = (c.settings.exclude_all || []).join(", ");
   $("conn-info").textContent = `Saving to ${gh.repo}/config.json`;
   renderUsage();
 }
@@ -522,6 +525,7 @@ function readEditor() {
   c.settings.auction_max_price = isNaN(am) ? null : am;
   const pg = parseInt($("opt-pages").value, 10);
   c.settings.max_pages = isNaN(pg) ? 3 : Math.min(10, Math.max(1, pg));
+  c.settings.exclude_all = splitWords($("opt-exclude-all").value.replace(/\n/g, ","));
   return c;
 }
 
