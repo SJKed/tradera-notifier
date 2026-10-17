@@ -113,6 +113,14 @@
       ],
       "max_price": 200,
       "exclude": []
+    },
+    {
+      "name": "Generic",
+      "queries": [
+        "age of sigmar"
+      ],
+      "max_price": 500,
+      "exclude": []
     }
   ]
 }
