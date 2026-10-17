@@ -1,12 +1,12 @@
 [
   {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/ficbvPwmIys:APA91bFefm6hQxuprY7s9Rk2GmYWVeCiNLvJkMfvVxH_w2MYclY9i-zoS6pqZE0kMLG5e6jdqC7nag221_MwJXjN8h7N09HG6I4-wo3OSFPbV5jtISNyqYgwVSIpcCEkOkzqwN2-4XMl",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/dtYoyM-5XPs:APA91bEXSUes0i5pAAPUy9hrK1Wun1VDbKl00-YXUADvnyQGAWOExEou9JvzbnzLHygrV4O60ptZz7tVlgkBA3Kzs30EURyCRShs4VI0dt1PFBjhvvi4joKxhJOLczk2y3Nd5Ol9CMjO",
     "keys": {
-      "p256dh": "BLijmlTdTthJFZAzp8niCo2UYlQFgOhKXylDKPwD7B1N6kMWnveFaZxWCb1YjQi3AcI34gsPBekMlkI6WonYt-I",
-      "auth": "kqnBJ7CQR72Eri6tk860ZA"
+      "p256dh": "BDrOYYVthzxss2sWY_fxyDsbZAtfgnqdcKODlXrvW6rEnA4pqi8JPwxs1yf2aKzDaPiURApHpkkqtRwnx0U2i0M",
+      "auth": "MePF-VExYhh20QRJ3VXvcA"
     },
     "publicKey": "BP_OUmm0osF0u2seLsNxTHAz1ERSEOliJHUSk6EfJIgjpXurcXYdaw9S7Hu8eKpeLdbC6nXWmMPPTxRWumupfXs",
     "label": "Android · Chrome",
-    "added": "2026-10-17T01:33:06.692Z"
+    "added": "2026-10-17T18:27:44.319Z"
   }
 ]
