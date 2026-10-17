@@ -1,7 +1,7 @@
 {
   "settings": {
     "max_pages": 3,
-    "include_auctions": false,
+    "include_auctions": true,
     "auction_max_price": null,
     "exclude_all": [
       "paint",
@@ -64,7 +64,7 @@
       "queries": [
         "hashut"
       ],
-      "max_price": 300,
+      "max_price": 500,
       "exclude": []
     },
     {
@@ -73,7 +73,7 @@
         "nurgle",
         "maggotkin"
       ],
-      "max_price": 300,
+      "max_price": 500,
       "exclude": [
         "death guard",
         "40k",
@@ -94,7 +94,7 @@
         "kruleboys",
         "orruk"
       ],
-      "max_price": 300,
+      "max_price": 500,
       "exclude": []
     },
     {
@@ -103,7 +103,7 @@
         "khorne",
         "skarbrand"
       ],
-      "max_price": 300,
+      "max_price": 500,
       "exclude": []
     },
     {
@@ -111,7 +111,7 @@
       "queries": [
         "lumineth"
       ],
-      "max_price": 300,
+      "max_price": 500,
       "exclude": []
     }
   ]
