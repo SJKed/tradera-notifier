@@ -1,0 +1,58 @@
+name: Tradera watcher
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes (GitHub may delay runs a few minutes)
+  push:
+    branches: [main]          # redeploy the app when you change it
+  workflow_dispatch: {}       # "Run workflow" button for manual runs
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: tradera-watcher
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The listing list (and which ids we've already seen) carries over between runs.
+      - name: Restore listings
+        uses: actions/cache/restore@v4
+        with:
+          path: docs/listings.json
+          key: listings-${{ github.run_id }}
+          restore-keys: listings-
+
+      - name: Check Tradera
+        env:
+          TRADERA_APP_ID: ${{ secrets.TRADERA_APP_ID }}
+          TRADERA_APP_KEY: ${{ secrets.TRADERA_APP_KEY }}
+        run: python bot.py
+
+      - name: Save listings
+        uses: actions/cache/save@v4
+        with:
+          path: docs/listings.json
+          key: listings-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4

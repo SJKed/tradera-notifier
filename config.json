@@ -1,0 +1,31 @@
+{
+  "settings": {
+    "max_pages": 3,
+    "include_auctions": true,
+    "auction_max_price": null
+  },
+  "watch": [
+    {
+      "name": "Helsmiths of Hashut",
+      "queries": ["hashut"],
+      "max_price": 300,
+      "exclude": []
+    },
+    {
+      "name": "Maggotkin of Nurgle",
+      "queries": ["nurgle", "maggotkin"],
+      "max_price": 250,
+      "exclude": [
+        "death guard", "40k", "40 000", "40000", "plague marine", "poxwalker",
+        "blightlord", "deathshroud", "kill team", "necromunda", "black library",
+        "bok", "roman", "novel", "kort ", "card", "total war"
+      ]
+    },
+    {
+      "name": "Kruleboyz",
+      "queries": ["kruleboyz", "kruleboys"],
+      "max_price": 250,
+      "exclude": ["bok", "roman", "novel", "card"]
+    }
+  ]
+}

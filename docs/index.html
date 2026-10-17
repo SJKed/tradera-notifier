@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AoS Bargains</title>
+<meta name="description" content="Cheap Hashut, Nurgle and Kruleboyz listings on Tradera">
+<meta name="theme-color" content="#14110f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AoS Bargains">
+<style>
+  :root {
+    --bg: #14110f;
+    --surface: #1e1a17;
+    --surface-2: #29231f;
+    --line: #3a322c;
+    --text: #efe6dc;
+    --muted: #a3968a;
+    --brass: #d9a441;
+    --brass-dim: #8a6a2e;
+    --new: #ff7a3d;
+    --hashut: #e2582b;
+    --nurgle: #9cb43c;
+    --kruleboyz: #3fa98f;
+    --other: #b48ad6;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  a { color: inherit; }
+
+  header {
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top) + 12px) 16px 10px;
+  }
+  .top { display: flex; align-items: center; gap: 12px; max-width: 760px; margin: 0 auto; }
+  h1 {
+    margin: 0; font-size: 21px; letter-spacing: .02em;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-weight: 700;
+  }
+  h1 span { color: var(--brass); }
+  .status { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+  .status.warn { color: var(--new); }
+  .refresh {
+    margin-left: auto; flex: none;
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--surface);
+    color: var(--brass); display: grid; place-items: center; cursor: pointer;
+  }
+  .refresh svg { width: 19px; height: 19px; }
+  .refresh.spin svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .controls { max-width: 760px; margin: 10px auto 0; }
+  .chips {
+    display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -16px; padding: 0 16px 2px;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; border: 1px solid var(--line); background: var(--surface);
+    color: var(--text); border-radius: 999px; padding: 6px 12px;
+    font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--brass)); }
+  .chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="true"] { border-color: var(--c, var(--brass)); background: color-mix(in srgb, var(--c, var(--brass)) 18%, var(--surface)); }
+  .chip[aria-pressed="true"] .n { color: var(--text); }
+  .row2 { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  select, .toggle {
+    font: inherit; font-size: 13.5px; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 6px 10px;
+  }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .toggle input { accent-color: var(--brass); margin: 0; }
+
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 32px; }
+  .list { display: grid; gap: 10px; }
+  .card {
+    display: grid; grid-template-columns: 88px 1fr; gap: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--c, var(--brass));
+    border-radius: var(--radius); padding: 10px; text-decoration: none;
+    transition: background .15s;
+  }
+  .card:active, .card:hover { background: var(--surface-2); }
+  .card.over { opacity: .5; }
+  .thumb {
+    width: 88px; height: 88px; border-radius: 10px; object-fit: cover;
+    background: var(--surface-2); display: block;
+  }
+  .thumb.empty { display: grid; place-items: center; color: var(--line); font-size: 30px; }
+  .body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .tag { color: var(--c); font-weight: 600; letter-spacing: .02em; }
+  .badge {
+    background: var(--new); color: #1a0d05; font-weight: 800; font-size: 10.5px;
+    border-radius: 6px; padding: 1px 6px; letter-spacing: .05em;
+  }
+  .title {
+    font-size: 15px; line-height: 1.3; margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .price-row { margin-top: auto; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .price { font-size: 19px; font-weight: 750; color: var(--brass); font-variant-numeric: tabular-nums; }
+  .kind { font-size: 12.5px; color: var(--muted); }
+  .ends-soon { color: var(--new); }
+
+  .empty-state { text-align: center; color: var(--muted); padding: 60px 20px; }
+  .empty-state b { display: block; color: var(--text); font-size: 17px; margin-bottom: 4px; }
+  footer { text-align: center; font-size: 12px; color: var(--muted); padding: 0 16px 24px; }
+
+  .icon-btn { margin-left: 0; }
+  .top .refresh:first-of-type { margin-left: auto; }
+
+  /* ---------- Settings ---------- */
+  dialog#settings {
+    width: 100%; max-width: 640px; height: 100%; max-height: 100%;
+    margin: 0 auto; padding: 0; border: 0; background: var(--bg); color: var(--text);
+  }
+  @media (min-width: 700px) {
+    dialog#settings { height: auto; max-height: 92vh; margin-top: 4vh; border: 1px solid var(--line); border-radius: 18px; }
+  }
+  dialog#settings::backdrop { background: rgba(0,0,0,.6); }
+  .sheet { display: flex; flex-direction: column; height: 100%; max-height: inherit; }
+  .sheet-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px 12px; border-bottom: 1px solid var(--line);
+  }
+  .sheet-head h2 { margin: 0; font-size: 18px; flex: 1; font-family: "Iowan Old Style", Palatino, Georgia, serif; }
+  .sheet-body { overflow-y: auto; padding: 14px 16px 24px; flex: 1; -webkit-overflow-scrolling: touch; }
+  .sheet-foot {
+    display: flex; gap: 10px; align-items: center;
+    padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px); border-top: 1px solid var(--line);
+  }
+  .section { margin-bottom: 22px; }
+  .section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+  .hint a { color: var(--brass); }
+  .field { display: grid; gap: 4px; margin-bottom: 10px; }
+  .field > span { font-size: 12.5px; color: var(--muted); }
+  input[type=text], input[type=number], input[type=password] {
+    width: 100%; font: inherit; font-size: 16px; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+  }
+  input:focus { outline: 2px solid var(--brass-dim); outline-offset: 0; border-color: var(--brass-dim); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .watch {
+    background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--brass));
+    border-radius: var(--radius); padding: 12px; margin-bottom: 10px;
+  }
+  .watch .field input { background: var(--bg); }
+  .watch .two { grid-template-columns: 1fr 110px; }
+  .watch-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .watch-head input { font-weight: 650; }
+  .btn {
+    font: inherit; font-size: 15px; font-weight: 600; border-radius: 10px; padding: 10px 16px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  }
+  .btn.primary { background: var(--brass); color: #1a1208; border-color: var(--brass); }
+  .btn.primary:disabled { opacity: .5; }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: #ff8b7a; border-color: transparent; background: transparent; padding: 8px; }
+  .btn.wide { width: 100%; border-style: dashed; color: var(--brass); }
+  .msg { font-size: 13px; color: var(--muted); flex: 1; }
+  .msg.ok { color: var(--nurgle); }
+  .msg.err { color: #ff8b7a; }
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 10px; }
+  .switch-row input { width: 22px; height: 22px; accent-color: var(--brass); }
+  .usage { font-size: 12.5px; color: var(--muted); }
+  .usage.over { color: #ff8b7a; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div>
+      <h1>AoS <span>Bargains</span></h1>
+      <div class="status" id="status">Loading…</div>
+    </div>
+    <button class="refresh icon-btn" id="open-settings" aria-label="Edit searches">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8 11h6M11 8v6"/></svg>
+    </button>
+    <button class="refresh icon-btn" id="refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+  </div>
+  <div class="controls">
+    <div class="chips" id="chips" role="toolbar" aria-label="Army filter"></div>
+    <div class="row2">
+      <select id="sort" aria-label="Sort">
+        <option value="found">Newest first</option>
+        <option value="price">Cheapest first</option>
+        <option value="end">Ending soonest</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="binOnly"> Buy now only</label>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="list" id="list"></div>
+</main>
+<footer>Prices in SEK from Tradera. Faded = now over your price limit.</footer>
+
+<dialog id="settings" aria-labelledby="settings-title">
+  <form class="sheet" id="settings-form" autocomplete="off">
+    <div class="sheet-head">
+      <h2 id="settings-title">Searches</h2>
+      <button type="button" class="btn ghost" id="close-settings">Close</button>
+    </div>
+    <div class="sheet-body">
+      <div id="connect" class="section">
+        <h3>Connect to your repo</h3>
+        <p class="hint" style="margin:0 0 10px">The app saves your searches to <code>config.json</code> in the watcher's GitHub repo. It needs a token that can only touch that one repo. Stored on this device only.</p>
+        <label class="field"><span>Repository (owner/name)</span><input type="text" id="gh-repo" placeholder="SJKed/tradera-watcher" autocapitalize="off" spellcheck="false"></label>
+        <label class="field"><span>GitHub token</span><input type="password" id="gh-token" placeholder="github_pat_…" autocapitalize="off" spellcheck="false"></label>
+        <p class="hint">Create one at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>: <i>Only select repositories</i> → this repo, <i>Repository permissions → Contents: Read and write</i>.</p>
+        <div style="margin-top:12px"><button type="button" class="btn primary" id="gh-connect">Connect</button></div>
+      </div>
+
+      <div id="editor" hidden>
+        <div class="section">
+          <h3>Searches</h3>
+          <div id="watches"></div>
+          <button type="button" class="btn wide" id="add-watch">+ Add search</button>
+          <p class="hint">Search words are searched one at a time on Tradera. Listings whose title contains an <i>exclude</i> word are skipped. Separate words with commas.</p>
+        </div>
+        <div class="section">
+          <h3>Options</h3>
+          <label class="switch-row"><span>Include auctions</span><input type="checkbox" id="opt-auctions"></label>
+          <div class="two">
+            <label class="field"><span>Auction price cap (kr, optional)</span><input type="number" id="opt-auction-max" inputmode="numeric" min="1" placeholder="same as search"></label>
+            <label class="field"><span>Result pages per word</span><input type="number" id="opt-pages" inputmode="numeric" min="1" max="10"></label>
+          </div>
+          <div class="usage" id="usage"></div>
+        </div>
+        <div class="section">
+          <h3>Connection</h3>
+          <p class="hint" style="margin:0" id="conn-info"></p>
+          <button type="button" class="btn ghost" id="gh-forget" style="margin-top:8px;padding-left:0">Forget token on this device</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-foot" id="foot" hidden>
+      <span class="msg" id="save-msg"></span>
+      <button type="button" class="btn primary" id="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const COLORS = { hashut: "var(--hashut)", nurgle: "var(--nurgle)", maggotkin: "var(--nurgle)", kruleboy: "var(--kruleboyz)" };
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// "New" = found after the previous time you opened the app.
+let prevVisit = store.get("lastVisit", 0);
+let data = null;
+let state = { army: store.get("army", "all"), sort: store.get("sort", "found"), binOnly: store.get("binOnly", false) };
+
+function colorFor(name) {
+  const n = (name || "").toLowerCase();
+  for (const k in COLORS) if (n.includes(k)) return COLORS[k];
+  return "var(--other)";
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function priceOf(l) {
+  const p = [l.bin, l.auction].filter((x) => x > 0);
+  return p.length ? Math.min(...p) : Infinity;
+}
+function ago(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+function endsIn(iso) {
+  if (!iso) return null;
+  const hasTz = /Z|[+-]\d\d:?\d\d$/.test(iso);
+  const t = Date.parse(hasTz ? iso : iso + "+01:00");
+  if (isNaN(t)) return null;
+  const h = (t - Date.now()) / 3.6e6;
+  if (h < 0) return { text: "ended", soon: true, t };
+  if (h < 1) return { text: `ends in ${Math.max(1, Math.round(h * 60))} min`, soon: true, t };
+  if (h < 24) return { text: `ends in ${Math.round(h)} h`, soon: h < 6, t };
+  return { text: `ends in ${Math.round(h / 24)} d`, soon: false, t };
+}
+const isNew = (l) => Date.parse(l.found) > prevVisit;
+
+function renderChips() {
+  const listings = data?.listings || [];
+  const names = (data?.watches || []).map((w) => w.name);
+  for (const l of listings) if (!names.includes(l.watch)) names.push(l.watch);
+  const count = (n) => listings.filter((l) => n === "all" || l.watch === n).length;
+  if (state.army !== "all" && !names.includes(state.army)) state.army = "all";
+  $("chips").innerHTML = ["all", ...names].map((n) => `
+    <button class="chip" data-army="${esc(n)}" aria-pressed="${state.army === n}" style="--c:${n === "all" ? "var(--brass)" : colorFor(n)}">
+      ${n === "all" ? "" : '<span class="dot"></span>'}${n === "all" ? "All" : esc(n)} <span class="n">${count(n)}</span>
+    </button>`).join("");
+}
+
+function render() {
+  renderChips();
+  $("sort").value = state.sort;
+  $("binOnly").checked = state.binOnly;
+
+  let items = (data?.listings || []).filter((l) =>
+    (state.army === "all" || l.watch === state.army) && (!state.binOnly || l.bin > 0));
+  const by = {
+    found: (a, b) => (b.found || "").localeCompare(a.found || ""),
+    price: (a, b) => priceOf(a) - priceOf(b),
+    end: (a, b) => (endsIn(a.end)?.t ?? Infinity) - (endsIn(b.end)?.t ?? Infinity),
+  }[state.sort];
+  items.sort((a, b) => (a.over_budget - b.over_budget) || by(a, b));
+
+  if (!data) return;
+  if (!items.length) {
+    $("list").innerHTML = `<div class="empty-state"><b>No bargains right now</b>${
+      data.listings?.length ? "Try another filter." : "New cheap listings will show up here as the watcher finds them."}</div>`;
+    return;
+  }
+
+  $("list").innerHTML = items.map((l) => {
+    const c = colorFor(l.watch);
+    const end = endsIn(l.end);
+    let kind;
+    if (l.bin > 0 && l.auction > 0) kind = `Buy now · bid ${l.auction} kr`;
+    else if (l.bin > 0) kind = "Buy now";
+    else kind = `Auction · ${l.bids ? `${l.bids} bid${l.bids > 1 ? "s" : ""}` : "no bids"}`;
+    const endTxt = end && l.auction > 0 ? ` · <span class="${end.soon ? "ends-soon" : ""}">${end.text}</span>` : "";
+    const price = l.bin > 0 ? l.bin : l.auction;
+    const img = l.thumb
+      ? `<img class="thumb" src="${esc(l.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;thumb empty&quot;>⚔</div>'">`
+      : `<div class="thumb empty">⚔</div>`;
+    return `
+      <a class="card${l.over_budget ? " over" : ""}" style="--c:${c}" href="${esc(l.url)}" target="_blank" rel="noopener">
+        ${img}
+        <div class="body">
+          <div class="meta">
+            ${isNew(l) ? '<span class="badge">NEW</span>' : ""}
+            <span class="tag">${esc(l.watch)}</span>
+            <span>· ${l.found ? ago(Date.parse(l.found)) : ""}</span>
+          </div>
+          <p class="title">${esc(l.title)}</p>
+          <div class="price-row">
+            <span class="price">${price} kr</span>
+            <span class="kind">${kind}${endTxt}</span>
+          </div>
+        </div>
+      </a>`;
+  }).join("");
+}
+
+function renderStatus(err) {
+  const el = $("status");
+  if (!data) { el.textContent = err ? "Couldn't load listings" : "Loading…"; el.className = "status" + (err ? " warn" : ""); return; }
+  const checked = Date.parse(data.updated);
+  const stale = Date.now() - checked > 2 * 3600e3;
+  const newCount = (data.listings || []).filter(isNew).length;
+  el.textContent = `Checked ${ago(checked)}${newCount ? ` · ${newCount} new` : ""}${err ? " · offline" : ""}`;
+  el.className = "status" + (stale || err ? " warn" : "");
+  if ("setAppBadge" in navigator) {
+    newCount ? navigator.setAppBadge(newCount).catch(() => {}) : navigator.clearAppBadge().catch(() => {});
+  }
+}
+
+async function load() {
+  $("refresh").classList.add("spin");
+  let err = false;
+  try {
+    const res = await fetch(`listings.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    data = await res.json();
+    store.set("cache", data);
+  } catch (e) {
+    err = true;
+    data = data || store.get("cache", null);
+  }
+  $("refresh").classList.remove("spin");
+  renderStatus(err);
+  render();
+}
+
+$("chips").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  state.army = b.dataset.army; store.set("army", state.army); render();
+});
+$("sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
+$("binOnly").addEventListener("change", (e) => { state.binOnly = e.target.checked; store.set("binOnly", state.binOnly); render(); });
+$("refresh").addEventListener("click", load);
+
+// Mark everything as seen once you leave the app, so next time only fresh finds get "NEW".
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") store.set("lastVisit", Date.now());
+  else { prevVisit = store.get("lastVisit", prevVisit); load(); }
+});
+setInterval(() => { if (document.visibilityState === "visible") load(); }, 5 * 60e3);
+setInterval(() => data && renderStatus(false), 60e3);
+
+// ---------- Search editor (saves config.json to the GitHub repo) ----------
+const DEFAULT_REPO = (() => {
+  // On GitHub Pages: https://<owner>.github.io/<repo>/
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/i);
+  const seg = location.pathname.split("/").filter(Boolean)[0];
+  return m && seg ? `${m[1]}/${seg}` : "SJKed/tradera-notifier";
+})();
+const gh = {
+  repo: store.get("ghRepo", DEFAULT_REPO),
+  token: store.get("ghToken", ""),
+  sha: null,
+  cfg: null,
+};
+
+async function ghApi(path, opts = {}) {
+  const res = await fetch(`https://api.github.com/repos/${gh.repo}/${path}`, {
+    ...opts,
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      Authorization: `Bearer ${gh.token}`,
+      ...(opts.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  if (!res.ok) {
+    let msg = `GitHub said ${res.status}`;
+    if (res.status === 401) msg = "Token was rejected. Check that you copied all of it.";
+    if (res.status === 403) msg = "Token can't write to this repo. It needs Contents: Read and write.";
+    if (res.status === 404) msg = "Repo or config.json not found (or the token can't see the repo).";
+    if (res.status === 409) msg = "Config changed elsewhere. Reloaded it; please redo your edit.";
+    const err = new Error(msg); err.status = res.status; throw err;
+  }
+  return res.json();
+}
+const b64decode = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+const b64encode = (s) => { let bin = ""; for (const b of new TextEncoder().encode(s)) bin += String.fromCharCode(b); return btoa(bin); };
+const splitWords = (s) => s.split(",").map((w) => w.trim()).filter(Boolean);
+
+function setMsg(text, kind = "") { $("save-msg").textContent = text; $("save-msg").className = "msg " + kind; }
+
+async function loadConfig() {
+  const file = await ghApi("contents/config.json");
+  gh.sha = file.sha;
+  gh.cfg = JSON.parse(b64decode(file.content));
+  gh.cfg.settings ??= {};
+  gh.cfg.watch ??= [];
+}
+
+function showEditor(on) {
+  $("connect").hidden = on;
+  $("editor").hidden = !on;
+  $("foot").hidden = !on;
+  $("settings-title").textContent = on ? "Searches" : "Edit searches";
+}
+
+function watchCard(w, i) {
+  return `
+    <div class="watch" data-i="${i}" style="--c:${colorFor(w.name)}">
+      <div class="watch-head">
+        <input type="text" data-k="name" value="${esc(w.name)}" placeholder="Name, e.g. Skaven" aria-label="Name">
+        <button type="button" class="btn danger" data-del="${i}" aria-label="Delete search">Delete</button>
+      </div>
+      <div class="two">
+        <label class="field"><span>Search words</span><input type="text" data-k="queries" value="${esc((w.queries || []).join(", "))}" placeholder="skaven, clanrats" autocapitalize="off"></label>
+        <label class="field"><span>Max price (kr)</span><input type="number" data-k="max_price" value="${esc(w.max_price ?? "")}" inputmode="numeric" min="1"></label>
+      </div>
+      <label class="field"><span>Exclude words</span><input type="text" data-k="exclude" value="${esc((w.exclude || []).join(", "))}" placeholder="40k, bok, card" autocapitalize="off"></label>
+    </div>`;
+}
+
+function renderEditor() {
+  const c = gh.cfg;
+  $("watches").innerHTML = c.watch.length ? c.watch.map(watchCard).join("") : '<p class="hint" style="margin:0 0 10px">No searches yet.</p>';
+  $("opt-auctions").checked = c.settings.include_auctions !== false;
+  $("opt-auction-max").value = c.settings.auction_max_price ?? "";
+  $("opt-pages").value = c.settings.max_pages ?? 3;
+  $("conn-info").textContent = `Saving to ${gh.repo}/config.json`;
+  renderUsage();
+}
+
+// Read the form back into gh.cfg.
+function readEditor() {
+  const c = gh.cfg;
+  c.watch = [...document.querySelectorAll("#watches .watch")].map((el) => {
+    const get = (k) => el.querySelector(`[data-k="${k}"]`).value;
+    const mp = parseInt(get("max_price"), 10);
+    return { name: get("name").trim(), queries: splitWords(get("queries")), max_price: isNaN(mp) ? null : mp, exclude: splitWords(get("exclude")) };
+  });
+  c.settings.include_auctions = $("opt-auctions").checked;
+  const am = parseInt($("opt-auction-max").value, 10);
+  c.settings.auction_max_price = isNaN(am) ? null : am;
+  const pg = parseInt($("opt-pages").value, 10);
+  c.settings.max_pages = isNaN(pg) ? 3 : Math.min(10, Math.max(1, pg));
+  return c;
+}
+
+function validate(c) {
+  const names = new Set();
+  for (const w of c.watch) {
+    if (!w.name) return "Every search needs a name.";
+    if (names.has(w.name.toLowerCase())) return `Two searches are called "${w.name}".`;
+    names.add(w.name.toLowerCase());
+    if (!w.queries.length) return `"${w.name}" needs at least one search word.`;
+    if (!(w.max_price > 0)) return `"${w.name}" needs a max price.`;
+  }
+  return null;
+}
+
+// Worst case: every word scans every page, 96 runs a day. Tradera allows 10,000 calls/day.
+function renderUsage() {
+  const c = readEditor();
+  const words = c.watch.reduce((n, w) => n + w.queries.length, 0);
+  const calls = words * c.settings.max_pages * 96;
+  const el = $("usage");
+  el.textContent = `Up to ~${calls.toLocaleString("sv-SE")} Tradera API calls/day (limit 10 000).` +
+    (calls > 10000 ? " Lower the pages or remove some words." : "");
+  el.className = "usage" + (calls > 10000 ? " over" : "");
+}
+
+async function openSettings() {
+  $("gh-repo").value = gh.repo;
+  $("gh-token").value = "";
+  setMsg("");
+  showEditor(false);
+  $("settings").showModal();
+  if (gh.token) {
+    try {
+      $("connect").querySelector("h3").textContent = "Loading…";
+      await loadConfig();
+      renderEditor();
+      showEditor(true);
+    } catch (e) {
+      $("connect").querySelector("h3").textContent = "Connect to your repo";
+      setMsg(e.message, "err");
+      $("foot").hidden = false; $("save").hidden = true;
+    }
+  }
+}
+
+$("open-settings").addEventListener("click", openSettings);
+
+$("gh-connect").addEventListener("click", async () => {
+  gh.repo = $("gh-repo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "") || DEFAULT_REPO;
+  gh.token = $("gh-token").value.trim();
+  if (!gh.token) { $("gh-token").focus(); return; }
+  $("gh-connect").disabled = true; $("gh-connect").textContent = "Connecting…";
+  try {
+    await loadConfig();
+    store.set("ghRepo", gh.repo); store.set("ghToken", gh.token);
+    renderEditor(); showEditor(true); setMsg(""); $("save").hidden = false;
+  } catch (e) {
+    $("foot").hidden = false; $("save").hidden = true; setMsg(e.message, "err");
+  } finally {
+    $("gh-connect").disabled = false; $("gh-connect").textContent = "Connect";
+  }
+});
+
+$("gh-forget").addEventListener("click", () => {
+  gh.token = ""; store.set("ghToken", "");
+  showEditor(false); setMsg("");
+});
+
+$("add-watch").addEventListener("click", () => {
+  readEditor();
+  gh.cfg.watch.push({ name: "", queries: [], max_price: 200, exclude: [] });
+  renderEditor();
+  const cards = document.querySelectorAll("#watches .watch");
+  const last = cards[cards.length - 1];
+  last.scrollIntoView({ behavior: "smooth", block: "center" });
+  last.querySelector('[data-k="name"]').focus();
+});
+
+$("watches").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-del]"); if (!b) return;
+  readEditor();
+  const w = gh.cfg.watch[+b.dataset.del];
+  if (w.name && !confirm(`Delete "${w.name}"? Its listings will disappear from the app.`)) return;
+  gh.cfg.watch.splice(+b.dataset.del, 1);
+  renderEditor();
+});
+$("editor").addEventListener("input", (e) => {
+  if (e.target.dataset.k === "name") e.target.closest(".watch").style.setProperty("--c", colorFor(e.target.value));
+  renderUsage();
+  setMsg("Unsaved changes");
+});
+
+$("save").addEventListener("click", async () => {
+  const c = readEditor();
+  const problem = validate(c);
+  if (problem) { setMsg(problem, "err"); return; }
+  $("save").disabled = true; setMsg("Saving…");
+  try {
+    const res = await ghApi("contents/config.json", {
+      method: "PUT",
+      body: JSON.stringify({
+        message: "Update searches from the app",
+        content: b64encode(JSON.stringify(c, null, 2) + "\n"),
+        sha: gh.sha,
+      }),
+    });
+    gh.sha = res.content.sha;
+    setMsg("Saved. New results in a couple of minutes.", "ok");
+  } catch (e) {
+    if (e.status === 409) { try { await loadConfig(); renderEditor(); } catch {} }
+    setMsg(e.message, "err");
+  } finally {
+    $("save").disabled = false;
+  }
+});
+
+$("settings").addEventListener("close", () => setTimeout(load, 300));
+// Enter in a text field shouldn't close the sheet.
+$("settings-form").addEventListener("submit", (e) => e.preventDefault());
+$("close-settings").addEventListener("click", () => $("settings").close());
+
+
+data = store.get("cache", null);
+if (data) { renderStatus(false); render(); }
+load();
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
