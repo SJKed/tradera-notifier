@@ -56,7 +56,10 @@
       "tärning",
       "tärningar",
       "Realms of Ruin"
-    ]
+    ],
+    "bargains": true,
+    "bargain_pct": 70,
+    "msrp_sek_per_gbp": 14
   },
   "watch": [
     {
