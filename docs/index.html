@@ -112,7 +112,26 @@
     transition: background .15s;
   }
   .card:active, .card:hover { background: var(--surface-2); }
-  .card.over { opacity: .5; }
+  .seg[hidden] { display: none; }
+  .views { display: flex; gap: 6px; margin-bottom: 10px; }
+  .views button {
+    flex: 1; font: inherit; font-size: 14.5px; font-weight: 650; color: var(--muted); cursor: pointer;
+    background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 4px 0 7px;
+  }
+  .views button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--brass); }
+  .views .n { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .deal {
+    background: var(--nurgle); color: #10140a; font-weight: 800; font-size: 11.5px;
+    border-radius: 6px; padding: 1px 6px; letter-spacing: .02em; white-space: nowrap;
+  }
+  .msrp { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .msrp span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msrp s { color: var(--muted); }
+  .hide-btn {
+    margin-left: auto; font: inherit; font-size: 12px; color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; cursor: pointer;
+  }
+  .note { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
   .thumb {
     width: 88px; height: 88px; border-radius: 10px; object-fit: cover;
     background: var(--surface-2); display: block;
@@ -221,12 +240,17 @@
     </button>
   </div>
   <div class="controls">
+    <div class="views" id="views" role="tablist">
+      <button type="button" data-view="all" role="tab">Listings <span class="n" id="n-all"></span></button>
+      <button type="button" data-view="bargains" role="tab">Bargains <span class="n" id="n-bargains"></span></button>
+    </div>
     <div class="chips" id="chips" role="toolbar" aria-label="Army filter"></div>
     <div class="row2">
       <select id="sort" aria-label="Sort">
         <option value="found">Newest first</option>
         <option value="price">Cheapest first</option>
         <option value="end">Ending soonest</option>
+        <option value="pct">Biggest discount</option>
       </select>
       <div class="seg" id="type" role="group" aria-label="Listing type">
         <button type="button" data-type="all">All</button>
@@ -274,6 +298,12 @@
           <h3>Options</h3>
           <label class="field"><span>Always exclude (all searches)</span><textarea id="opt-exclude-all" rows="4" placeholder="paint, white dwarf, battletome" autocapitalize="off" spellcheck="false"></textarea></label>
           <label class="switch-row"><span>Include auctions</span><input type="checkbox" id="opt-auctions"></label>
+          <label class="switch-row"><span>Find bargains (auctions far under MSRP)</span><input type="checkbox" id="opt-bargains"></label>
+          <div class="two">
+            <label class="field"><span>Bargain: under % of MSRP</span><input type="number" id="opt-bargain-pct" inputmode="numeric" min="5" max="95"></label>
+            <label class="field"><span>kr per £ of GW's UK price</span><input type="text" id="opt-sek-gbp" inputmode="decimal" autocomplete="off"></label>
+          </div>
+          <p class="hint" id="msrp-info" style="margin-top:-4px"></p>
           <div class="two">
             <label class="field"><span>Auction price cap (kr, optional)</span><input type="number" id="opt-auction-max" inputmode="numeric" min="1" placeholder="same as search"></label>
             <label class="field"><span>Result pages per word</span><input type="number" id="opt-pages" inputmode="numeric" min="1" max="10"></label>
@@ -305,7 +335,8 @@ const store = {
 // "New" = found after the previous time you opened the app.
 let prevVisit = store.get("lastVisit", 0);
 let data = null;
-let state = { army: store.get("army", "all"), sort: store.get("sort", "found"), type: store.get("type", store.get("binOnly", false) ? "bin" : "all") };
+let state = { army: store.get("army", "all"), sort: store.get("sort", "found"), type: store.get("type", store.get("binOnly", false) ? "bin" : "all"), view: store.get("view", "all") };
+let hiddenBargains = new Set(store.get("hiddenBargains", []));
 
 function colorFor(name) {
   const n = (name || "").toLowerCase();
@@ -339,8 +370,14 @@ function endsIn(iso) {
 }
 const isNew = (l) => Date.parse(l.found) > prevVisit;
 
+// Listings tab: within your price limits. Bargains tab: auctions under X% of MSRP (any price).
+function inView(l, view = state.view) {
+  if (view === "bargains") return l.bargain === true && !hiddenBargains.has(l.id);
+  return l.in_budget !== false;
+}
+
 function renderChips() {
-  const listings = data?.listings || [];
+  const listings = (data?.listings || []).filter((l) => inView(l));
   const names = (data?.watches || []).map((w) => w.name);
   for (const l of listings) if (!names.includes(l.watch)) names.push(l.watch);
   const count = (n) => listings.filter((l) => n === "all" || l.watch === n).length;
@@ -352,32 +389,49 @@ function renderChips() {
 }
 
 function render() {
+  const bargainsView = state.view === "bargains";
   renderChips();
-  $("sort").value = state.sort;
+  for (const b of $("views").children) b.setAttribute("aria-pressed", b.dataset.view === state.view);
+  const all = data?.listings || [];
+  $("n-all").textContent = data ? all.filter((l) => inView(l, "all")).length : "";
+  $("n-bargains").textContent = data ? all.filter((l) => inView(l, "bargains")).length : "";
+  $("type").hidden = bargainsView;  // bargains are always auctions
+  $("sort").querySelector('[value="pct"]').hidden = !bargainsView;
+  const sort = !bargainsView && state.sort === "pct" ? "found" : state.sort;
+  $("sort").value = sort;
   for (const b of $("type").children) b.setAttribute("aria-pressed", b.dataset.type === state.type);
 
-  let items = (data?.listings || []).filter((l) =>
-    (state.army === "all" || l.watch === state.army) && (state.type === "all" || (state.type === "bin" ? l.bin > 0 : l.auction > 0)));
+  let items = all.filter((l) => inView(l) && (state.army === "all" || l.watch === state.army) &&
+    (bargainsView || state.type === "all" || (state.type === "bin" ? l.bin > 0 : l.auction > 0)));
   const by = {
     found: (a, b) => (b.found || "").localeCompare(a.found || ""),
-    price: (a, b) => priceOf(a) - priceOf(b),
+    price: (a, b) => (bargainsView ? a.auction - b.auction : priceOf(a) - priceOf(b)),
     end: (a, b) => (endsIn(a.end)?.t ?? Infinity) - (endsIn(b.end)?.t ?? Infinity),
-  }[state.sort];
-  items.sort((a, b) => (a.over_budget - b.over_budget) || by(a, b));
+    pct: (a, b) => (a.msrp_pct ?? 999) - (b.msrp_pct ?? 999),
+  }[sort];
+  items.sort(by);
 
   if (!data) return;
+  const bg = data.bargains || {};
+  const note = bargainsView && bg.enabled
+    ? `<p class="note">Auctions under ${bg.pct}% of MSRP. MSRP ≈ GW's UK price × ${bg.sek_per_gbp} kr/£, matched from the title, so check the listing before bidding.</p>` : "";
   if (!items.length) {
-    $("list").innerHTML = `<div class="empty-state"><b>No bargains right now</b>${
-      data.listings?.length ? "Try another filter." : "New cheap listings will show up here as the watcher finds them."}</div>`;
+    let msg;
+    if (bargainsView && !bg.enabled) msg = bg.kits === 0 || (bg.enabled === undefined)
+      ? "<b>Bargains are getting ready</b>The price list loads on the watcher's next run."
+      : "<b>Bargains are off</b>Turn them on under Options in the search settings.";
+    else if (bargainsView) msg = `<b>No bargains right now</b>Auctions under ${bg.pct}% of MSRP will show up here.`;
+    else msg = `<b>Nothing here right now</b>${all.length ? "Try another filter." : "New cheap listings will show up here as the watcher finds them."}`;
+    $("list").innerHTML = note + `<div class="empty-state">${msg}</div>`;
     return;
   }
 
-  $("list").innerHTML = items.map((l) => {
+  $("list").innerHTML = note + items.map((l) => {
     const c = colorFor(l.watch);
     const end = endsIn(l.end);
     let kind;
     const bidsTxt = l.bids ? `${l.bids} bid${l.bids > 1 ? "s" : ""}` : "no bids";
-    const showBid = state.type === "auction" && l.auction > 0;  // Auctions view leads with the current bid
+    const showBid = (bargainsView || state.type === "auction") && l.auction > 0;  // auction views lead with the bid
     if (l.bin > 0 && l.auction > 0) kind = showBid ? `Auction · ${bidsTxt} · buy now ${l.bin} kr` : `Buy now · bid ${l.auction} kr`;
     else if (l.bin > 0) kind = "Buy now";
     else kind = `Auction · ${l.bids ? `${l.bids} bid${l.bids > 1 ? "s" : ""}` : "no bids"}`;
@@ -387,7 +441,7 @@ function render() {
       ? `<img class="thumb" src="${esc(l.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;thumb empty&quot;>⚔</div>'">`
       : `<div class="thumb empty">⚔</div>`;
     return `
-      <a class="card${l.over_budget ? " over" : ""}" style="--c:${c}" href="${esc(l.url)}" target="_blank" rel="noopener">
+      <a class="card" style="--c:${c}" href="${esc(l.url)}" target="_blank" rel="noopener">
         ${img}
         <div class="body">
           <div class="meta">
@@ -398,8 +452,10 @@ function render() {
           <p class="title">${esc(l.title)}</p>
           <div class="price-row">
             <span class="price">${price} kr</span>
+            ${l.bargain && l.msrp_pct != null ? `<span class="deal">${l.msrp_pct}% of MSRP</span>` : ""}
             <span class="kind">${kind}${endTxt}</span>
           </div>
+          ${bargainsView && l.msrp ? `<div class="msrp"><span>MSRP ~${l.msrp} kr · ${esc(l.msrp_kit || "")}</span><button type="button" class="hide-btn" data-hide="${l.id}" aria-label="Not a bargain, hide">Hide</button></div>` : ""}
         </div>
       </a>`;
   }).join("");
@@ -439,6 +495,20 @@ $("chips").addEventListener("click", (e) => {
   const b = e.target.closest(".chip"); if (!b) return;
   state.army = b.dataset.army; store.set("army", state.army); render();
 });
+$("views").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-view]"); if (!b) return;
+  state.view = b.dataset.view; store.set("view", state.view);
+  if (state.view === "bargains" && !store.get("sortTouchedBargains", false)) state.sort = "pct";
+  render();
+});
+$("list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-hide]"); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  hiddenBargains.add(+b.dataset.hide);
+  store.set("hiddenBargains", [...hiddenBargains].slice(-500));
+  render();
+});
+$("sort").addEventListener("change", (e) => { if (state.view === "bargains") store.set("sortTouchedBargains", true); });
 $("sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
 $("type").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-type]"); if (!b) return;
@@ -529,6 +599,13 @@ function renderEditor() {
   const c = gh.cfg;
   $("watches").innerHTML = c.watch.length ? c.watch.map(watchCard).join("") : '<p class="hint" style="margin:0 0 10px">No searches yet.</p>';
   $("opt-auctions").checked = c.settings.include_auctions !== false;
+  $("opt-bargains").checked = c.settings.bargains !== false;
+  $("opt-bargain-pct").value = c.settings.bargain_pct ?? 50;
+  $("opt-sek-gbp").value = c.settings.msrp_sek_per_gbp ?? 14;
+  const bg = data?.bargains || {};
+  $("msrp-info").textContent = bg.kits
+    ? `Price list: ${bg.kits.toLocaleString("sv-SE")} Age of Sigmar kits, updated ${ago(Date.parse(bg.updated))}. Refreshed weekly.`
+    : "The price list loads on the watcher's next run.";
   $("opt-auction-max").value = c.settings.auction_max_price ?? "";
   $("opt-pages").value = c.settings.max_pages ?? 3;
   $("opt-exclude-all").value = (c.settings.exclude_all || []).join(", ");
@@ -545,6 +622,11 @@ function readEditor() {
     return { name: get("name").trim(), queries: splitWords(get("queries")), max_price: isNaN(mp) ? null : mp, exclude: splitWords(get("exclude")) };
   });
   c.settings.include_auctions = $("opt-auctions").checked;
+  c.settings.bargains = $("opt-bargains").checked;
+  const bp = parseInt($("opt-bargain-pct").value, 10);
+  c.settings.bargain_pct = isNaN(bp) ? 50 : Math.min(95, Math.max(5, bp));
+  const sg = parseFloat(String($("opt-sek-gbp").value).replace(",", "."));
+  c.settings.msrp_sek_per_gbp = isNaN(sg) ? 14 : Math.min(30, Math.max(5, sg));
   const am = parseInt($("opt-auction-max").value, 10);
   c.settings.auction_max_price = isNaN(am) ? null : am;
   const pg = parseInt($("opt-pages").value, 10);

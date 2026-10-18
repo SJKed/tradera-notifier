@@ -48,6 +48,15 @@ Open the magnifier button → **Notifications** → turn on *Notify this device 
 - Turn notifications on separately on each device you want pinged. Turning them off removes that device.
 - If the Actions cache is ever cleared, the bot makes a new signing key. The app notices and re-subscribes the next time you open it.
 
+## Bargains
+
+The **Bargains** tab lists auctions whose current bid is under half of the kit's MSRP, whatever your price limits are. A 1,500 kr Great Unclean One at 450 kr shows up here even if your Nurgle limit is 200 kr. You get a notification for each new bargain ("Bargain: 450 kr (30% of MSRP)").
+
+- **Where MSRP comes from:** Games Workshop's site can't be read by a bot, so once a week the bot downloads GW's UK RRP and product code for every Age of Sigmar kit from a UK retailer's public price feed. It converts pounds to kronor with a factor, 14 kr/£ by default, which you can change under Options along with the 50% threshold. Any army you add a search for is covered automatically.
+- **Matching:** the bot finds the kit from GW's product code when a title includes it (e.g. 99120211003), otherwise from the kit name in the title plus the army. Sprues, bits, and single models out of a multi-model box ("1 st Plaguebearer") are never counted as bargains. Bundles are priced as their single most expensive matched kit, so they're under- rather than over-valued.
+- **It's a heuristic:** each card shows which kit it matched and that kit's MSRP. If one is wrong, tap **Hide** to remove it from Bargains on that device.
+- Auction prices rise. A bargain drops out once bids pass the threshold.
+
 ## In the app
 
 - **NEW** marks listings found since you last opened the app. On Android, the app icon also shows a badge with the count.

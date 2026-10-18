@@ -340,6 +340,10 @@ def push_messages(new: list[dict]) -> list[dict]:
             kind = "Buy now"
         else:
             kind = f"Auction · {l['bids']} bids" if l["bids"] else "Auction · no bids"
+        if l.get("bargain"):
+            return {"title": f"Bargain: {l['auction']} kr ({l['msrp_pct']}% of MSRP)",
+                    "body": f"{l['title']}\n{kind} · MSRP ~{l['msrp']} kr",
+                    "url": l["url"], "image": l.get("thumb") or "", "tag": f"item-{l['id']}"}
         return {"title": f"{l['watch']}: {lowest_price(l)} kr", "body": f"{l['title']}\n{kind}",
                 "url": l["url"], "image": l.get("thumb") or "", "tag": f"item-{l['id']}"}
     if len(new) <= MAX_PUSHES:
@@ -410,6 +414,212 @@ def send_pushes(new: list[dict], quiet: bool) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# MSRP catalog and bargain detection
+# --------------------------------------------------------------------------- #
+# Games Workshop's own site can't be read by a bot, so the catalog comes from a
+# UK retailer's public Shopify feed: each Age of Sigmar kit's GW product code
+# (e.g. 99120211003) and GW's UK RRP ("compare at" price). The bot refreshes it
+# weekly into state/ and converts £ to kr with a factor you can change in the app.
+
+CATALOG_URL = "https://www.goblingaming.co.uk/collections/warhammer-age-of-sigmar/products.json"
+CATALOG_PATH = STATE_DIR / "msrp_catalog.json"
+CATALOG_MAX_AGE = timedelta(days=7)
+
+# Faction and range names, longest first, stripped from the front of catalog titles
+# ("Maggotkin of Nurgle Plaguebearers of Nurgle" -> kit "Plaguebearers of Nurgle").
+FACTIONS = sorted([
+    "warhammer age of sigmar", "age of sigmar", "warhammer 40000", "warhammer 40,000", "warhammer 40k",
+    "warhammer", "games workshop", "aos", "citadel",
+    "helsmiths of hashut", "maggotkin of nurgle", "daemons of nurgle", "blades of khorne",
+    "daemons of khorne", "khorne bloodbound", "orruk warclans", "kruleboyz", "ironjawz", "bonesplitterz",
+    "lumineth realm-lords", "lumineth realm lords", "lumineth realmlords", "slaves to darkness",
+    "disciples of tzeentch", "daemons of tzeentch", "hedonites of slaanesh", "daemons of slaanesh",
+    "chaos daemons", "skaven", "stormcast eternals", "seraphon", "sylvaneth", "idoneth deepkin",
+    "daughters of khaine", "kharadron overlords", "fyreslayers", "cities of sigmar", "soulblight gravelords",
+    "nighthaunt", "ossiarch bonereapers", "flesh-eater courts", "flesh eater courts", "gloomspite gitz",
+    "sons of behemat", "ogor mawtribes", "beasts of chaos", "warcry", "warhammer underworlds", "legends",
+], key=len, reverse=True)
+_GENERIC = {"of", "the", "and", "with", "a", "an", "on", "in", "to", "for", "warhammer", "age",
+            "sigmar", "aos", "games", "workshop", "edition", "eng", "english", "new"}
+_FACTION_GENERIC = _GENERIC | {"daemons", "chaos", "death", "destruction", "order", "realm", "lords"}
+
+# Titles that suggest part of a kit (a sprue, bits, a single model from a box).
+_PARTIAL = re.compile(r"(?<!\w)(spru\w*|spure\w*|bits?|bitz|delar|del av|parts?|arms?|heads?|huvud\w*|"
+                      r"rester|incomplete|ofullständig\w*|saknar|saknas|broken|trasig\w*|single|"
+                      r"enstaka|kroppar?|torsos?)(?!\w)|#\s*\d")
+_ONE = re.compile(r"(?<!\w)1\s*(st|x|stk|styck)(?!\w)")
+_GW_CODE = re.compile(r"(?<!\d)99\d{9}(?!\d)")
+
+
+def _stem(t: str) -> str:
+    return t[:-1] if len(t) > 4 and t.endswith("s") and not t.endswith("ss") else t
+
+
+def _tokens(s: str) -> list[str]:
+    """Words, lowercased and de-pluralised. Hyphenated words are joined ("Stab-grot" -> stabgrot)."""
+    s = s.lower().replace("’", "'").replace("'", "")
+    s = re.sub(r"(?<=\w)-(?=\w)", "", s)
+    return [_stem(t) for t in re.sub(r"[^\wåäöé]+", " ", s).split()]
+
+
+def _title_tokens(s: str) -> set[str]:
+    """Listing-side tokens: also hyphen parts and adjacent pairs joined, so
+    "Killa-Boss With Stab Grot" and "stabgrot" both meet "Killaboss with Stab-grot"."""
+    low = s.lower().replace("’", "'").replace("'", "")
+    words = [w for w in re.sub(r"[^\wåäöé]+", " ", low.replace("-", " ")).split()]
+    toks = set(_tokens(s)) | {_stem(w) for w in words}
+    toks |= {_stem(a + b) for a, b in zip(words, words[1:])}
+    return toks
+
+
+def _head_noun(kit: str) -> str:
+    """The main noun of a kit name: last word before of/with/on ("Plaguebearers of Nurgle")."""
+    first = re.split(r"\s(?:of|with|on|and|&)\s", kit.lower(), maxsplit=1)[0]
+    words = re.sub(r"[^\wåäöé-]+", " ", first).split()
+    return words[-1] if words else ""
+
+
+def _strip_factions(title: str) -> tuple[str, str]:
+    """('Maggotkin of Nurgle', 'Plaguebearers of Nurgle') from a catalog title. Handles
+    "Faction Kit", "Faction: Kit", "Range - Faction - Kit" and "Kit - Range - Games Workshop"."""
+    faction, kit_parts = [], []
+    for seg in re.split(r"\s+[-–—|]\s+|:\s+", title.strip()):
+        rest = seg.strip()
+        changed = True
+        while changed and rest:
+            changed = False
+            low = rest.lower()
+            for f in FACTIONS:
+                if low.startswith(f) and (len(low) == len(f) or not low[len(f)].isalnum()):
+                    faction.append(rest[:len(f)])
+                    rest = rest[len(f):].lstrip(" :-–—/|,")
+                    changed = True
+                    break
+        rest = re.sub(r"\s*\((?:19|20)\d\d\)|\s*\(\d+(?:st|nd|rd|th) edition\)", "", rest, flags=re.I).strip()
+        if rest:
+            kit_parts.append(rest)
+    return " ".join(faction), " ".join(kit_parts)
+
+
+def fetch_catalog() -> list[dict]:
+    """Download every Age of Sigmar kit with its GW code and UK RRP."""
+    items, seen = [], set()
+    for page in range(1, 25):
+        req = urllib.request.Request(f"{CATALOG_URL}?limit=250&page={page}",
+                                     headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+        products = json.loads(_http(req, timeout=30)).get("products", [])
+        if not products:
+            break
+        for p in products:
+            v = (p.get("variants") or [{}])[0]
+            sku = str(v.get("sku") or "").strip()
+            try:
+                gbp = float(v.get("compare_at_price") or 0) or float(v.get("price") or 0) / 0.85
+            except (TypeError, ValueError):
+                continue
+            if not gbp or not p.get("title") or (sku and sku in seen):
+                continue
+            seen.add(sku)
+            faction, kit = _strip_factions(p["title"])
+            items.append({"sku": sku, "title": p["title"], "faction": faction, "kit": kit or p["title"],
+                          "gbp": round(gbp, 2)})
+        time.sleep(1)
+    return items
+
+
+def load_catalog(now: datetime) -> tuple[list[dict], str]:
+    """The cached catalog, refreshed when older than a week. Never fails the run."""
+    cached = {}
+    if CATALOG_PATH.exists():
+        try:
+            cached = json.loads(CATALOG_PATH.read_text())
+        except json.JSONDecodeError:
+            pass
+    fetched = _parse_dt(cached.get("fetched", ""))
+    if os.environ.get("MSRP_OFFLINE") != "1" and (not fetched or now - fetched > CATALOG_MAX_AGE):
+        try:
+            items = fetch_catalog()
+            if len(items) > 50:
+                cached = {"fetched": _iso(now), "items": items}
+                CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+                CATALOG_PATH.write_text(json.dumps(cached))
+                print(f"Updated MSRP catalog: {len(items)} kits.")
+            else:
+                print(f"MSRP catalog fetch returned only {len(items)} kits; keeping the old one.", file=sys.stderr)
+        except Exception as e:
+            print(f"MSRP catalog fetch failed ({e}); keeping the old one.", file=sys.stderr)
+    return cached.get("items", []), cached.get("fetched", "")
+
+
+class Pricer:
+    """Matches a listing title to a kit and gives its MSRP in kr."""
+
+    def __init__(self, catalog: list[dict], sek_per_gbp: float, overrides: dict | None = None):
+        self.factor = sek_per_gbp
+        self.by_sku = {c["sku"]: c for c in catalog if c.get("sku")}
+        self.kits = []
+        for c in catalog:
+            fac = {t for t in _tokens(c["faction"]) if t not in _FACTION_GENERIC}
+            # "Bloodthrone / Skull Cannon": either name identifies the kit.
+            for name in re.split(r"\s*/\s*", c["kit"]):
+                kit_tokens = [t for t in _tokens(name) if t not in _GENERIC]
+                kit_tokens = [t for t in kit_tokens if t not in fac] or kit_tokens  # "Plaguebearers of Nurgle" -> plaguebearer
+                if kit_tokens:
+                    self.kits.append((c, kit_tokens, fac))
+        self.overrides = {k.strip().lower(): v for k, v in (overrides or {}).items() if _int(v) > 0}
+
+    def sek(self, c: dict) -> int:
+        o = self.overrides.get(c["kit"].lower()) or self.overrides.get(c["title"].lower())
+        if o:
+            return _int(o)
+        return int(round(c["gbp"] * self.factor / 5.0) * 5)
+
+    def match(self, title: str, context: list[str] = ()) -> dict | None:
+        """Best kit for a title, or None. context = the search words that found it."""
+        if not title:
+            return None
+        code = _GW_CODE.search(title)
+        if code and code.group() in self.by_sku:
+            return self.by_sku[code.group()]
+        toks = _title_tokens(title)
+        ctx = toks | {t for q in context for t in _tokens(q)}
+        best, best_len = None, 0
+        for c, kit_tokens, fac in self.kits:
+            if len(kit_tokens) < best_len or not set(kit_tokens) <= toks:
+                continue
+            if fac and not fac & ctx:
+                continue  # kit belongs to another army than the listing mentions
+            if len(kit_tokens) == 1 and len(kit_tokens[0]) < 5:
+                continue  # too generic on its own ("lord", "chariot")
+            if len(kit_tokens) > best_len or (best and self.sek(c) < self.sek(best)):
+                best, best_len = c, len(kit_tokens)  # longest name wins; ties -> cheaper kit
+        return best
+
+    def annotate(self, l: dict, ratio: float) -> None:
+        """Set msrp / msrp_kit / msrp_pct / bargain on a listing."""
+        for k in ("msrp", "msrp_kit", "msrp_pct", "bargain"):
+            l.pop(k, None)
+        title = l.get("title", "")
+        c = self.match(title, l.get("queries", []))
+        if not c:
+            return
+        msrp = self.sek(c)
+        l["msrp"], l["msrp_kit"] = msrp, c["kit"]
+        price = l["auction"] if l.get("auction") else l.get("bin", 0)
+        if price and msrp:
+            l["msrp_pct"] = round(100 * price / msrp)
+        low = title.lower()
+        head = _head_noun(c["kit"])
+        plural_kit = len(head) > 4 and head.endswith("s") and not head.endswith("ss")
+        # A box of several models offered as one ("1 st Plaguebearer", "Flesh Hound").
+        single_of_box = plural_kit and (
+            _ONE.search(low) or (re.search(rf"(?<!\w){re.escape(head[:-1])}(?!\w)", low)
+                                 and not re.search(rf"(?<!\w){re.escape(head)}(?!\w)", low)))
+        partial = _PARTIAL.search(low) or single_of_box
+        l["bargain"] = bool(l.get("auction") and not partial and l["auction"] < ratio * msrp)
+
+
+# --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
 
@@ -430,7 +640,7 @@ def reject_reason(l: dict, cfg: dict, exclude_all: list[str], include_auctions: 
     exclude = [x for x in watch.get("exclude", []) if x.strip()] + exclude_all
     if excluded(l.get("title", ""), exclude):
         return "matches an exclude word"
-    if not is_cheap(l, _int(watch.get("max_price")), include_auctions, auction_max):
+    if not is_cheap(l, _int(watch.get("max_price")), include_auctions, auction_max) and not l.get("bargain"):
         return "over the price limit (or auctions are turned off)"
     return None
 
@@ -447,10 +657,20 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
     include_auctions = bool(settings.get("include_auctions", True))
     auction_max = settings.get("auction_max_price") or None
     exclude_all = [w for w in settings.get("exclude_all", []) if isinstance(w, str)]
+    bargains_on = settings.get("bargains", True) is not False
+    bargain_pct = min(100, max(1, _int(settings.get("bargain_pct")) or 50))
+    sek_per_gbp = float(settings.get("msrp_sek_per_gbp") or 14)
 
     now = _now()
+    pricer, catalog_info = None, {}
+    if bargains_on:
+        catalog, fetched = load_catalog(now)
+        if catalog:
+            pricer = Pricer(catalog, sek_per_gbp, settings.get("msrp_overrides"))
+        catalog_info = {"kits": len(catalog), "updated": fetched}
     data = load_data()
     first_run = not data
+    data_before_bargains = data.get("bargains")
     # Searches that have completed a run before. A brand-new search fills up with
     # everything already on Tradera, which shouldn't all buzz your phone.
     seeded = set(data.get("seeded_watches", {l.get("watch") for l in data.get("listings", [])}))
@@ -492,20 +712,25 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
                         if l.get("watch") == name and query not in l.setdefault("queries", []):
                             l["queries"].append(query)
                         continue
-                    if (item["id"] in seen or excluded(item["title"], exclude)
-                            or not is_cheap(item, max_price, include_auctions, auction_max)):
+                    if item["id"] in seen or excluded(item["title"], exclude):
                         continue
-                    entry = {**item, "watch": name, "queries": [query], "found": _iso(now), "over_budget": False}
+                    entry = {**item, "watch": name, "queries": [query], "found": _iso(now)}
+                    if pricer:
+                        pricer.annotate(entry, bargain_pct / 100)
+                    if not is_cheap(item, max_price, include_auctions, auction_max) and not entry.get("bargain"):
+                        continue
                     listings[item["id"]] = entry
                     seen.add(item["id"])
                     new.append(entry)
-                # Sorted cheapest first: once a whole page is over budget, stop paging.
-                if all(lowest_price(i) > cap for i in items if lowest_price(i)):
+                # Sorted cheapest first: once a whole page is over budget, stop paging
+                # (unless hunting bargains, which can be pricier kits going cheap).
+                if not pricer and all(lowest_price(i) > cap for i in items if lowest_price(i)):
                     break
                 time.sleep(0.5)
 
     for l in new:
-        print(f"NEW  {l['watch']}: {lowest_price(l)} kr | {l['title']} | {l['url']}")
+        tag = f" [BARGAIN {l['msrp_pct']}% of ~{l['msrp']} kr {l['msrp_kit']}]" if l.get("bargain") else ""
+        print(f"NEW  {l['watch']}: {lowest_price(l)} kr | {l['title']} | {l['url']}{tag}")
     if not new:
         print("No new cheap listings.")
 
@@ -514,6 +739,17 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
         # wouldn't be added today. Their ids are forgotten too, so they come back if the
         # settings change back (a raised limit, a re-added search word, a renamed search).
         names = {w.get("name") or "Unnamed" for w in cfg.get("watch", [])}
+        watch_by_name = {w.get("name") or "Unnamed": w for w in cfg.get("watch", [])}
+        for l in listings.values():
+            l.pop("over_budget", None)
+            if pricer:
+                pricer.annotate(l, bargain_pct / 100)
+            else:
+                for k in ("msrp", "msrp_kit", "msrp_pct", "bargain"):
+                    l.pop(k, None)
+            w = watch_by_name.get(l.get("watch"))
+            # in_budget: shown in the main list; bargains above the limit only show under Bargains.
+            l["in_budget"] = bool(w) and is_cheap(l, _int(w.get("max_price")), include_auctions, auction_max)
         dropped, reasons = set(), {}
         for l in listings.values():
             why = reject_reason(l, cfg, exclude_all, include_auctions, auction_max)
@@ -530,11 +766,15 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
             "errors": errors,
             "watches": [{"name": w.get("name") or "Unnamed", "max_price": w.get("max_price")} for w in cfg.get("watch", [])],
             "seeded_watches": sorted(n for n in names if n not in failed_watches),
+            "bargains": {"enabled": bool(pricer), "pct": bargain_pct, "sek_per_gbp": sek_per_gbp, **catalog_info},
             "listings": kept,
             "seen": [i for i in data.get("seen", []) if i not in dropped] + [l["id"] for l in new],
         })
         save_data(data)
         to_notify = [] if first_run else [l for l in new if l["watch"] in seeded]
+        if pricer and not (data_before_bargains or {}).get("enabled"):
+            # First run with the price list: today's bargains fill the tab quietly.
+            to_notify = [l for l in to_notify if l.get("in_budget")]
         if len(to_notify) < len(new):
             print(f"Not notifying {len(new) - len(to_notify)} listing(s) from a first run or a new search.")
         send_pushes(to_notify, quiet=not to_notify)
