@@ -615,7 +615,9 @@ class Pricer:
         single_of_box = plural_kit and (
             _ONE.search(low) or (re.search(rf"(?<!\w){re.escape(head[:-1])}(?!\w)", low)
                                  and not re.search(rf"(?<!\w){re.escape(head)}(?!\w)", low)))
-        partial = _PARTIAL.search(low) or single_of_box
+        # "på sprue" / "on sprue" / "NoS in sprue" means a complete, unbuilt kit, not a loose sprue.
+        low_kit = re.sub(r"(?<!\w)(på|on|in|i|still on|kvar på)\s+(spru\w*|spure\w*|ram(ar|en)?|frames?)(?!\w)", " ", low)
+        partial = _PARTIAL.search(low_kit) or single_of_box
         l["bargain"] = bool(l.get("auction") and not partial and l["auction"] < ratio * msrp)
 
 
