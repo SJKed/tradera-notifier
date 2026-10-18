@@ -424,6 +424,7 @@ def send_pushes(new: list[dict], quiet: bool) -> None:
 CATALOG_URL = "https://www.goblingaming.co.uk/collections/warhammer-age-of-sigmar/products.json"
 CATALOG_PATH = STATE_DIR / "msrp_catalog.json"
 CATALOG_MAX_AGE = timedelta(days=7)
+CATALOG_VERSION = 2  # bump when fetch_catalog() changes, to refetch immediately
 
 # Faction and range names, longest first, stripped from the front of catalog titles
 # ("Maggotkin of Nurgle Plaguebearers of Nurgle" -> kit "Plaguebearers of Nurgle").
@@ -448,6 +449,10 @@ _PARTIAL = re.compile(r"(?<!\w)(spru\w*|spure\w*|bits?|bitz|delar|del av|parts?|
                       r"rester|incomplete|ofullständig\w*|saknar|saknas|broken|trasig\w*|single|"
                       r"enstaka|kroppar?|torsos?)(?!\w)|#\s*\d")
 _ONE = re.compile(r"(?<!\w)1\s*(st|x|stk|styck)(?!\w)")
+_NOT_A_NAME = {"of", "on", "in", "with", "and", "to", "for", "from", "at", "by"}
+_ROLES = {"lord", "lady", "herald", "chieftain", "champion", "warboss", "boss", "king", "queen", "prince",
+          "princess", "knight", "priest", "sorcerer", "wizard", "captain", "hero", "master", "general",
+          "daemon", "warlord", "shaman", "mage", "exalted", "greater", "great"}
 _GW_CODE = re.compile(r"(?<!\d)99\d{9}(?!\d)")
 
 
@@ -503,7 +508,7 @@ def _strip_factions(title: str) -> tuple[str, str]:
 
 def fetch_catalog() -> list[dict]:
     """Download every Age of Sigmar kit with its GW code and UK RRP."""
-    items, seen = [], set()
+    items, seen = [], {}
     for page in range(1, 25):
         req = urllib.request.Request(f"{CATALOG_URL}?limit=250&page={page}",
                                      headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
@@ -517,12 +522,18 @@ def fetch_catalog() -> list[dict]:
                 gbp = float(v.get("compare_at_price") or 0) or float(v.get("price") or 0) / 0.85
             except (TypeError, ValueError):
                 continue
-            if not gbp or not p.get("title") or (sku and sku in seen):
+            if not gbp or not p.get("title"):
                 continue
-            seen.add(sku)
             faction, kit = _strip_factions(p["title"])
-            items.append({"sku": sku, "title": p["title"], "faction": faction, "kit": kit or p["title"],
-                          "gbp": round(gbp, 2)})
+            if sku and sku in seen:  # same kit listed twice: keep the other name as an alias
+                prev = seen[sku]
+                if kit and kit.lower() != prev["kit"].lower() and kit not in prev.setdefault("alts", []):
+                    prev["alts"].append(kit)
+                continue
+            item = {"sku": sku, "title": p["title"], "faction": faction, "kit": kit or p["title"], "gbp": round(gbp, 2)}
+            if sku:
+                seen[sku] = item
+            items.append(item)
         time.sleep(1)
     return items
 
@@ -536,11 +547,12 @@ def load_catalog(now: datetime) -> tuple[list[dict], str]:
         except json.JSONDecodeError:
             pass
     fetched = _parse_dt(cached.get("fetched", ""))
-    if os.environ.get("MSRP_OFFLINE") != "1" and (not fetched or now - fetched > CATALOG_MAX_AGE):
+    stale = not fetched or now - fetched > CATALOG_MAX_AGE or cached.get("version") != CATALOG_VERSION
+    if os.environ.get("MSRP_OFFLINE") != "1" and stale:
         try:
             items = fetch_catalog()
             if len(items) > 50:
-                cached = {"fetched": _iso(now), "items": items}
+                cached = {"fetched": _iso(now), "version": CATALOG_VERSION, "items": items}
                 CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
                 CATALOG_PATH.write_text(json.dumps(cached))
                 print(f"Updated MSRP catalog: {len(items)} kits.")
@@ -560,12 +572,24 @@ class Pricer:
         self.kits = []
         for c in catalog:
             fac = {t for t in _tokens(c["faction"]) if t not in _FACTION_GENERIC}
-            # "Bloodthrone / Skull Cannon": either name identifies the kit.
-            for name in re.split(r"\s*/\s*", c["kit"]):
+            names = []
+            for full in [c["kit"], *c.get("alts", [])]:
+                # "Bloodthrone / Skull Cannon": either name identifies the kit.
+                for name in re.split(r"\s*/\s*", full):
+                    names.append((name, False))
+                    # Named characters: "Skarbrand The Bloodthirster", "Radukar, The Beast" -> the name alone.
+                    m = re.match(r"^\s*([^,]+?),?\s+the\s+\S", name, re.I)
+                    who = m.group(1).split() if m else []
+                    if (who and len(who) <= 3 and who[-1].lower() not in _NOT_A_NAME
+                            and not {w.lower() for w in who} & _ROLES
+                            and any(len(t) >= 5 for t in _tokens(" ".join(who)))):
+                        names.append((" ".join(who), True))
+            for name, is_character in names:
                 kit_tokens = [t for t in _tokens(name) if t not in _GENERIC]
                 kit_tokens = [t for t in kit_tokens if t not in fac] or kit_tokens  # "Plaguebearers of Nurgle" -> plaguebearer
                 if kit_tokens:
-                    self.kits.append((c, kit_tokens, fac))
+                    # A character's own name is unique enough to match without the army being mentioned.
+                    self.kits.append((c, kit_tokens, set() if is_character else fac))
         self.overrides = {k.strip().lower(): v for k, v in (overrides or {}).items() if _int(v) > 0}
 
     def sek(self, c: dict) -> int:
@@ -595,12 +619,13 @@ class Pricer:
                 best, best_len = c, len(kit_tokens)  # longest name wins; ties -> cheaper kit
         return best
 
-    def annotate(self, l: dict, ratio: float) -> None:
-        """Set msrp / msrp_kit / msrp_pct / bargain on a listing."""
+    def annotate(self, l: dict, ratio: float, context: list[str] = ()) -> None:
+        """Set msrp / msrp_kit / msrp_pct / bargain on a listing. context = the search's
+        name and words, which tell the army when the title doesn't."""
         for k in ("msrp", "msrp_kit", "msrp_pct", "bargain"):
             l.pop(k, None)
         title = l.get("title", "")
-        c = self.match(title, l.get("queries", []))
+        c = self.match(title, [*l.get("queries", []), *context])
         if not c:
             return
         msrp = self.sek(c)
@@ -718,7 +743,7 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
                         continue
                     entry = {**item, "watch": name, "queries": [query], "found": _iso(now)}
                     if pricer:
-                        pricer.annotate(entry, bargain_pct / 100)
+                        pricer.annotate(entry, bargain_pct / 100, [name, *queries])
                     if not is_cheap(item, max_price, include_auctions, auction_max) and not entry.get("bargain"):
                         continue
                     listings[item["id"]] = entry
@@ -744,12 +769,12 @@ def run_once(cfg: dict, dry_run: bool = False, search_fn=search) -> list[dict]:
         watch_by_name = {w.get("name") or "Unnamed": w for w in cfg.get("watch", [])}
         for l in listings.values():
             l.pop("over_budget", None)
+            w = watch_by_name.get(l.get("watch"))
             if pricer:
-                pricer.annotate(l, bargain_pct / 100)
+                pricer.annotate(l, bargain_pct / 100, [l.get("watch", ""), *((w or {}).get("queries", []))])
             else:
                 for k in ("msrp", "msrp_kit", "msrp_pct", "bargain"):
                     l.pop(k, None)
-            w = watch_by_name.get(l.get("watch"))
             # in_budget: shown in the main list; bargains above the limit only show under Bargains.
             l["in_budget"] = bool(w) and is_cheap(l, _int(w.get("max_price")), include_auctions, auction_max)
         dropped, reasons = set(), {}
